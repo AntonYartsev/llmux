@@ -541,9 +541,7 @@ func OpenAIRequestToGemini(req *ChatRequest) map[string]interface{} {
 	}
 	if len(req.Tools) > 0 {
 		geminiTools := OpenaiToolsToGemini(req.Tools)
-		for _, t := range geminiTools {
-			toolsList = append(toolsList, t)
-		}
+		toolsList = append(toolsList, geminiTools...)
 		payload["toolConfig"] = OpenaiToolChoiceToGemini(req.ToolChoice)
 	}
 	if len(toolsList) > 0 {

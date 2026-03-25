@@ -7,7 +7,7 @@ import (
 
 func strPtr(s string) *string { return &s }
 func intPtr(i int) *int       { return &i }
-func f64Ptr(f float64) *float64 { return &f }
+
 
 func TestClaudeHeaders(t *testing.T) {
 	token := "test-token-abc"

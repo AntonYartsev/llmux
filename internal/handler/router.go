@@ -86,13 +86,6 @@ func shouldFallback(statusCode int, err error) bool {
 	return false
 }
 
-// returns the backend name string for a given Backend instance
-func (r *Router) backendNameFor(b backend.Backend) string {
-	if b == nil {
-		return ""
-	}
-	return b.Name()
-}
 
 // converts an OpenAI ChatRequest to the payload map expected by the named backend
 func transformPayload(b backend.Backend, openaiReq *transform.ChatRequest, model string) (map[string]any, error) {

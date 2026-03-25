@@ -1,14 +1,13 @@
 name: Docker
 
 on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
   push:
     tags:
       - "v*"
-    branches:
-      - main
-    paths-ignore:
-      - "*.md"
-      - LICENSE
 
 permissions:
   contents: read
@@ -17,6 +16,9 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'push' ||
+      github.event.workflow_run.conclusion == 'success'
     steps:
       - uses: actions/checkout@v4
 
