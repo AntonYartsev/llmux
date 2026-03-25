@@ -1,0 +1,9 @@
+services:
+  llmux:
+    build: .
+    ports:
+      - "${PORT:-8888}:${PORT:-8888}"
+    env_file: .env
+    volumes:
+      - ./credentials.json:/root/.llmux/credentials.json:ro
+    restart: unless-stopped
