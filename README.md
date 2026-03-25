@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/77d5c34e-da5f-4bea-a61a-e71c16b65ec3" width="200" alt="" />
+</p>
+
 # llmux
 
 One endpoint, any model.
