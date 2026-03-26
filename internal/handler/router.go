@@ -86,7 +86,6 @@ func shouldFallback(statusCode int, err error) bool {
 	return false
 }
 
-
 // converts an OpenAI ChatRequest to the payload map expected by the named backend
 func transformPayload(b backend.Backend, openaiReq *transform.ChatRequest, model string) (map[string]any, error) {
 	if b == nil {
@@ -118,6 +117,16 @@ func transformResponse(bname string, body []byte, model string) (map[string]any,
 	}
 }
 
+// strips any vendor prefix (e.g. "gemini/gemini-2.5-pro" → "gemini-2.5-pro")
+// and the legacy "models/" prefix, returning the bare model name for the backend
+func stripModelPrefix(model string) string {
+	model = strings.TrimPrefix(model, "models/")
+	if _, bare := config.ParsePrefixedModel(model); bare != "" {
+		return bare
+	}
+	return model
+}
+
 // executes a non-streaming request, optionally walking the fallback chain, and returns (openaiResponseBytes, httpStatus, actualModel, error)
 func (r *Router) Send(
 	ctx context.Context,
@@ -126,31 +135,34 @@ func (r *Router) Send(
 ) ([]byte, int, string, error) {
 	model = strings.TrimPrefix(model, "models/")
 	b := r.resolveBackend(model)
+	// strip vendor prefix for the backend
+	bareModel := stripModelPrefix(model)
 	if b == nil {
 		return nil, 503, model, fmt.Errorf("no backend available for model %q", model)
 	}
 
-	payload, err := transformPayload(b, openaiReq, model)
+	payload, err := transformPayload(b, openaiReq, bareModel)
 	if err != nil {
 		return nil, 500, model, err
 	}
 
-	body, status, err := b.Send(ctx, model, payload)
+	body, status, err := b.Send(ctx, bareModel, payload)
 
 	if shouldFallback(status, err) {
-		if chain, ok := r.fallbackChains[model]; ok {
+		if chain, ok := r.fallbackChains[bareModel]; ok {
 			for _, fbModel := range chain {
 				fbBackend := r.resolveBackend(fbModel)
 				if fbBackend == nil {
 					continue
 				}
-				fbPayload, ferr := transformPayload(fbBackend, openaiReq, fbModel)
+				bareFB := stripModelPrefix(fbModel)
+				fbPayload, ferr := transformPayload(fbBackend, openaiReq, bareFB)
 				if ferr != nil {
 					continue
 				}
-				fbBody, fbStatus, fbErr := fbBackend.Send(ctx, fbModel, fbPayload)
+				fbBody, fbStatus, fbErr := fbBackend.Send(ctx, bareFB, fbPayload)
 				if !shouldFallback(fbStatus, fbErr) && fbErr == nil {
-					result, terr := transformResponse(fbBackend.Name(), fbBody, fbModel)
+					result, terr := transformResponse(fbBackend.Name(), fbBody, bareFB)
 					if terr != nil {
 						return nil, 500, fbModel, terr
 					}
@@ -168,7 +180,7 @@ func (r *Router) Send(
 		return nil, status, model, err
 	}
 
-	result, terr := transformResponse(b.Name(), body, model)
+	result, terr := transformResponse(b.Name(), body, bareModel)
 	if terr != nil {
 		return nil, 500, model, terr
 	}
@@ -187,33 +199,35 @@ func (r *Router) Stream(
 ) (int, <-chan []byte, string, error) {
 	model = strings.TrimPrefix(model, "models/")
 	b := r.resolveBackend(model)
+	bareModel := stripModelPrefix(model)
 	if b == nil {
 		return 503, nil, model, fmt.Errorf("no backend available for model %q", model)
 	}
 
-	payload, err := transformPayload(b, openaiReq, model)
+	payload, err := transformPayload(b, openaiReq, bareModel)
 	if err != nil {
 		return 500, nil, model, err
 	}
 
-	status, chunkCh, err := b.Stream(ctx, model, payload)
+	status, chunkCh, err := b.Stream(ctx, bareModel, payload)
 
 	// on initial error, try fallback chain
 	if shouldFallback(status, err) {
-		if chain, ok := r.fallbackChains[model]; ok {
+		if chain, ok := r.fallbackChains[bareModel]; ok {
 			for _, fbModel := range chain {
 				fbBackend := r.resolveBackend(fbModel)
 				if fbBackend == nil {
 					continue
 				}
-				fbPayload, ferr := transformPayload(fbBackend, openaiReq, fbModel)
+				bareFB := stripModelPrefix(fbModel)
+				fbPayload, ferr := transformPayload(fbBackend, openaiReq, bareFB)
 				if ferr != nil {
 					continue
 				}
-				fbStatus, fbCh, fbErr := fbBackend.Stream(ctx, fbModel, fbPayload)
+				fbStatus, fbCh, fbErr := fbBackend.Stream(ctx, bareFB, fbPayload)
 				if !shouldFallback(fbStatus, fbErr) && fbErr == nil {
 					outCh := make(chan []byte, 32)
-					go streamWorker(ctx, fbBackend.Name(), fbModel, fbCh, outCh)
+					go streamWorker(ctx, fbBackend.Name(), bareFB, fbCh, outCh)
 					return fbStatus, outCh, fbModel, nil
 				}
 			}
@@ -225,7 +239,7 @@ func (r *Router) Stream(
 	}
 
 	outCh := make(chan []byte, 32)
-	go streamWorker(ctx, b.Name(), model, chunkCh, outCh)
+	go streamWorker(ctx, b.Name(), bareModel, chunkCh, outCh)
 	return status, outCh, model, nil
 }
 
@@ -332,11 +346,15 @@ func streamWorker(
 }
 
 // returns the combined model list from all available backends
+// with vendor-prefixed IDs (e.g. "gemini/gemini-2.5-pro")
 func (r *Router) AllModels() []backend.ModelInfo {
 	var all []backend.ModelInfo
 	for _, b := range r.backends {
 		if b.IsAvailable() {
-			all = append(all, b.ListModels()...)
+			for _, m := range b.ListModels() {
+				m.ID = m.Provider + "/" + m.ID
+				all = append(all, m)
+			}
 		}
 	}
 	return all
