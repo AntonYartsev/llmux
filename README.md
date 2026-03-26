@@ -31,6 +31,9 @@ go build -o llmux ./cmd/server
 ./llmux auth gemini
 ./llmux auth claude
 ./llmux
+
+# additional you may set callback host and port
+./llmux auth claude --callback-host myserver.com --callback-port 8888
 ```
 
 ## Usage
