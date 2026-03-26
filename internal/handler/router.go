@@ -141,6 +141,8 @@ func (r *Router) Send(
 		return nil, 503, model, fmt.Errorf("no backend available for model %q", model)
 	}
 
+	// ensure transformers see the bare model name (without vendor prefix)
+	openaiReq.Model = bareModel
 	payload, err := transformPayload(b, openaiReq, bareModel)
 	if err != nil {
 		return nil, 500, model, err
@@ -204,6 +206,8 @@ func (r *Router) Stream(
 		return 503, nil, model, fmt.Errorf("no backend available for model %q", model)
 	}
 
+	// ensure transformers see the bare model name (without vendor prefix)
+	openaiReq.Model = bareModel
 	payload, err := transformPayload(b, openaiReq, bareModel)
 	if err != nil {
 		return 500, nil, model, err
