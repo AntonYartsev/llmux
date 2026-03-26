@@ -258,13 +258,39 @@ func ParseFallbackChains(raw string) map[string][]string {
 	return result
 }
 
+// splits a "provider/model" string into its prefix and bare model name
+// if there is no slash, prefix is empty and bare is the full input
+// legacy "models/" prefix is not treated as a vendor prefix
+func ParsePrefixedModel(model string) (prefix, bare string) {
+	if i := strings.IndexByte(model, '/'); i >= 0 {
+		p := model[:i]
+		if p == "models" {
+			return "", model[i+1:]
+		}
+		return p, model[i+1:]
+	}
+	return "", model
+}
+
 // determines which backend ("gemini" or "claude") should handle a given model
-// an explicit entry in backendMap takes priority
+// an explicit entry in backendMap takes priority; a vendor prefix (e.g. "claude/model") is checked next
 func ResolveBackendName(model string, backendMap map[string]string) string {
 	if backend, ok := backendMap[model]; ok {
 		return backend
 	}
-	if strings.HasPrefix(model, "claude-") || strings.HasPrefix(model, "anthropic/") {
+	// check vendor prefix (e.g. "gemini/gemini-2.5-pro" -> "gemini")
+	if prefix, bare := ParsePrefixedModel(model); prefix != "" {
+		// also check the bare name in the explicit map
+		if backend, ok := backendMap[bare]; ok {
+			return backend
+		}
+		// normalize known aliases
+		if prefix == "anthropic" {
+			return "claude"
+		}
+		return prefix
+	}
+	if strings.HasPrefix(model, "claude-") {
 		return "claude"
 	}
 	return "gemini"

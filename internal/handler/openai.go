@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"llmux/internal/config"
 	"llmux/internal/transform"
 
 	"github.com/gin-gonic/gin"
@@ -14,9 +15,17 @@ import (
 
 const defaultModel = "gemini-2.5-flash"
 
-// returns the "owned_by" string for a model ID
+// returns the "owned_by" string for a model ID (supports vendor-prefixed IDs)
 func ownerFor(id string) string {
-	lower := strings.ToLower(id)
+	prefix, bare := config.ParsePrefixedModel(id)
+	if prefix == "claude" {
+		return "anthropic"
+	}
+	if prefix == "gemini" {
+		return "google"
+	}
+	// fallback: inspect bare name
+	lower := strings.ToLower(bare)
 	if strings.Contains(lower, "claude") {
 		return "anthropic"
 	}
@@ -137,6 +146,7 @@ func ListModels(r *Router) gin.HandlerFunc {
 }
 
 // handles GET /v1/models/:id
+// accepts both prefixed ("gemini/gemini-2.5-pro") and bare ("gemini-2.5-pro") IDs
 func GetModel(r *Router) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id := c.Param("id")
@@ -144,7 +154,9 @@ func GetModel(r *Router) gin.HandlerFunc {
 		id = strings.TrimPrefix(id, "/")
 
 		for _, m := range r.AllModels() {
-			if m.ID == id {
+			// exact match on prefixed ID, or bare-name fallback
+			_, bare := config.ParsePrefixedModel(m.ID)
+			if m.ID == id || bare == id {
 				c.JSON(http.StatusOK, openaiModelObject(m.ID))
 				return
 			}

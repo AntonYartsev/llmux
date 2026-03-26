@@ -174,6 +174,28 @@ func TestParseFallbackChains(t *testing.T) {
 	})
 }
 
+func TestParsePrefixedModel(t *testing.T) {
+	tests := []struct {
+		input      string
+		wantPrefix string
+		wantBare   string
+	}{
+		{"gemini/gemini-2.5-pro", "gemini", "gemini-2.5-pro"},
+		{"claude/claude-sonnet-4-6", "claude", "claude-sonnet-4-6"},
+		{"openrouter/gemini-2.5-pro", "openrouter", "gemini-2.5-pro"},
+		{"gemini-2.5-pro", "", "gemini-2.5-pro"},
+		{"claude-sonnet-4-6", "", "claude-sonnet-4-6"},
+		{"", "", ""},
+	}
+	for _, tc := range tests {
+		prefix, bare := ParsePrefixedModel(tc.input)
+		if prefix != tc.wantPrefix || bare != tc.wantBare {
+			t.Errorf("ParsePrefixedModel(%q) = (%q, %q), want (%q, %q)",
+				tc.input, prefix, bare, tc.wantPrefix, tc.wantBare)
+		}
+	}
+}
+
 func TestResolveBackendName(t *testing.T) {
 	tests := []struct {
 		model      string
@@ -183,10 +205,19 @@ func TestResolveBackendName(t *testing.T) {
 		{"my-model", map[string]string{"my-model": "custom"}, "custom"},
 		{"claude-sonnet-4-6", nil, "claude"},
 		{"claude-opus-4-6", map[string]string{}, "claude"},
-		{"anthropic/claude-3", nil, "claude"},
 		{"models/gemini-2.5-pro", nil, "gemini"},
 		{"some-other-model", map[string]string{}, "gemini"},
 		{"claude-special", map[string]string{"claude-special": "gemini"}, "gemini"},
+		// vendor-prefixed models
+		{"gemini/gemini-2.5-pro", nil, "gemini"},
+		{"claude/claude-sonnet-4-6", nil, "claude"},
+		{"openrouter/gemini-2.5-pro", nil, "openrouter"},
+		{"claude/custom-model", nil, "claude"},
+		{"anthropic/claude-3", nil, "claude"},
+		// bare name in backendMap takes priority when prefixed
+		{"gemini/my-model", map[string]string{"my-model": "custom"}, "custom"},
+		// prefixed model in backendMap takes priority
+		{"gemini/gemini-2.5-pro", map[string]string{"gemini/gemini-2.5-pro": "custom"}, "custom"},
 	}
 	for _, tc := range tests {
 		got := ResolveBackendName(tc.model, tc.backendMap)
