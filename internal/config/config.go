@@ -142,68 +142,6 @@ func GetUserAgent() string {
 	return "GeminiCLI/" + GeminiCLIVersion + " (" + GetPlatformString() + ")"
 }
 
-// strips variant suffixes from a model name to return the underlying base model identifier
-// compound suffixes are matched first
-func GetBaseModelName(model string) string {
-	// strip vendor prefix first (e.g. "gemini/gemini-2.5-pro" -> "gemini-2.5-pro")
-	if _, bare := ParsePrefixedModel(model); bare != "" {
-		model = bare
-	}
-	for _, suffix := range []string{"-search-maxthinking", "-search-nothinking", "-maxthinking", "-nothinking", "-search"} {
-		if strings.HasSuffix(model, suffix) {
-			return model[:len(model)-len(suffix)]
-		}
-	}
-	return model
-}
-
-// reports whether the model name indicates search grounding
-func IsSearchModel(model string) bool {
-	return strings.Contains(model, "-search")
-}
-
-// reports whether the model name indicates thinking is disabled
-func IsNothinkingModel(model string) bool {
-	return strings.Contains(model, "-nothinking")
-}
-
-// reports whether the model name indicates maximum thinking budget
-func IsMaxthinkingModel(model string) bool {
-	return strings.Contains(model, "-maxthinking")
-}
-
-// returns the thinking token budget appropriate for the model
-// returns -1 as a sentinel for "default" (let Gemini decide)
-func GetThinkingBudget(model string) int {
-	base := GetBaseModelName(model)
-	if IsNothinkingModel(model) {
-		if strings.Contains(base, "gemini-2.5-flash") {
-			return 0
-		}
-		return 128
-	}
-	if IsMaxthinkingModel(model) {
-		switch {
-		case strings.Contains(base, "gemini-2.5-flash"):
-			return 24576
-		case strings.Contains(base, "gemini-2.5-pro"):
-			return 32768
-		case strings.Contains(base, "gemini-3-pro"):
-			return 45000
-		}
-	}
-	return -1
-}
-
-// reports whether thought tokens should be returned in the response
-func ShouldIncludeThoughts(model string) bool {
-	if IsNothinkingModel(model) {
-		base := GetBaseModelName(model)
-		return strings.Contains(base, "gemini-2.5-pro") || strings.Contains(base, "gemini-3-pro")
-	}
-	return true
-}
-
 // returns the platform string used in Code Assist API
 // metadata payloads (e.g. "DARWIN_ARM64"), matching gemini-cli conventions
 func getMetadataPlatform() string {
