@@ -1,5 +1,12 @@
 <p align="center">
   <img src="https://github.com/user-attachments/assets/77d5c34e-da5f-4bea-a61a-e71c16b65ec3" width="200" alt="" />
+  <br><br>
+  <a href="https://github.com/AntonYartsev/llmux/actions">
+    <img src="https://img.shields.io/github/actions/workflow/status/AntonYartsev/llmux/ci.yml?branch=main" alt="Build" />
+  </a>
+  <a href="https://github.com/AntonYartsev/llmux/releases">
+    <img src="https://img.shields.io/github/v/release/AntonYartsev/llmux" alt="Release" />
+  </a>
 </p>
 
 # llmux
