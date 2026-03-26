@@ -474,50 +474,37 @@ func OpenAIRequestToGemini(req *ChatRequest) map[string]interface{} {
 		}
 	}
 
-	if !strings.Contains(req.Model, "gemini-2.5-flash-image") {
-		var thinkingBudget *int
-
-		if config.IsNothinkingModel(req.Model) || config.IsMaxthinkingModel(req.Model) {
-			b := config.GetThinkingBudget(req.Model)
-			thinkingBudget = &b
-		} else if req.ReasoningEffort != nil {
-			base := config.GetBaseModelName(req.Model)
-			var b int
-			switch *req.ReasoningEffort {
-			case "minimal":
-				if strings.Contains(base, "gemini-2.5-flash") {
-					b = 0
-				} else {
-					b = 128
-				}
-				thinkingBudget = &b
-			case "low":
-				b = 1000
-				thinkingBudget = &b
-			case "medium":
-				b = -1
-				thinkingBudget = &b
-			case "high":
-				switch {
-				case strings.Contains(base, "gemini-2.5-flash"):
-					b = 24576
-				case strings.Contains(base, "gemini-2.5-pro"):
-					b = 32768
-				case strings.Contains(base, "gemini-3-pro"):
-					b = 45000
-				}
-				thinkingBudget = &b
+	// thinking config based on reasoning_effort
+	if req.ReasoningEffort != nil {
+		var thinkingBudget int
+		switch *req.ReasoningEffort {
+		case "minimal":
+			if strings.Contains(req.Model, "flash") {
+				thinkingBudget = 0
+			} else {
+				thinkingBudget = 128
 			}
-		} else {
-			b := config.GetThinkingBudget(req.Model)
-			thinkingBudget = &b
+		case "low":
+			thinkingBudget = 1000
+		case "medium":
+			thinkingBudget = -1
+		case "high":
+			switch {
+			case strings.Contains(req.Model, "gemini-2.5-flash"):
+				thinkingBudget = 24576
+			case strings.Contains(req.Model, "gemini-2.5-pro"):
+				thinkingBudget = 32768
+			case strings.Contains(req.Model, "gemini-3"):
+				thinkingBudget = 45000
+			default:
+				thinkingBudget = 32768
+			}
+		default:
+			thinkingBudget = -1
 		}
-
-		if thinkingBudget != nil {
-			genCfg["thinkingConfig"] = map[string]interface{}{
-				"thinkingBudget":  *thinkingBudget,
-				"includeThoughts": config.ShouldIncludeThoughts(req.Model),
-			}
+		genCfg["thinkingConfig"] = map[string]interface{}{
+			"thinkingBudget":  thinkingBudget,
+			"includeThoughts": true,
 		}
 	}
 
@@ -525,7 +512,7 @@ func OpenAIRequestToGemini(req *ChatRequest) map[string]interface{} {
 		"contents":         contents,
 		"generationConfig": genCfg,
 		"safetySettings":   config.DefaultSafetySettings,
-		"model":            config.GetBaseModelName(req.Model),
+		"model":            req.Model,
 	}
 
 	if len(systemParts) > 0 {
@@ -536,10 +523,16 @@ func OpenAIRequestToGemini(req *ChatRequest) map[string]interface{} {
 	}
 
 	var toolsList []map[string]interface{}
-	if config.IsSearchModel(req.Model) {
-		toolsList = append(toolsList, map[string]interface{}{"googleSearch": map[string]interface{}{}})
+	var hasFunctionTools bool
+	for _, tool := range req.Tools {
+		switch tool["type"] {
+		case "web_search_preview":
+			toolsList = append(toolsList, map[string]interface{}{"googleSearch": map[string]interface{}{}})
+		case "function":
+			hasFunctionTools = true
+		}
 	}
-	if len(req.Tools) > 0 {
+	if hasFunctionTools {
 		geminiTools := OpenaiToolsToGemini(req.Tools)
 		toolsList = append(toolsList, geminiTools...)
 		payload["toolConfig"] = OpenaiToolChoiceToGemini(req.ToolChoice)
@@ -577,50 +570,17 @@ func BuildGeminiPayloadFromNative(nativeReq map[string]any, modelFromPath string
 		nativeReq["generationConfig"] = genCfg
 	}
 
-	// ensure thinkingConfig exists
+	// ensure thinkingConfig exists with includeThoughts enabled
 	if _, ok := genCfg["thinkingConfig"]; !ok {
-		genCfg["thinkingConfig"] = map[string]any{}
-	}
-
-	if !strings.Contains(modelFromPath, "gemini-2.5-flash-image") {
-		thinkingBudget := config.GetThinkingBudget(modelFromPath)
-		includeThoughts := config.ShouldIncludeThoughts(modelFromPath)
-
-		thinkingCfg, _ := genCfg["thinkingConfig"].(map[string]any)
-		if thinkingCfg == nil {
-			thinkingCfg = map[string]any{}
-			genCfg["thinkingConfig"] = thinkingCfg
-		}
-
-		thinkingCfg["includeThoughts"] = includeThoughts
-		// only set thinkingBudget if not already present in the request
-		if _, ok := thinkingCfg["thinkingBudget"]; !ok {
-			thinkingCfg["thinkingBudget"] = thinkingBudget
-		}
-	}
-
-	// add Google Search grounding for search models
-	if config.IsSearchModel(modelFromPath) {
-		tools, _ := nativeReq["tools"].([]any)
-		hasSearch := false
-		for _, t := range tools {
-			if tm, ok := t.(map[string]any); ok {
-				if _, ok := tm["googleSearch"]; ok {
-					hasSearch = true
-					break
-				}
-			}
-		}
-		if !hasSearch {
-			nativeReq["tools"] = append(tools, map[string]any{"googleSearch": map[string]any{}})
+		genCfg["thinkingConfig"] = map[string]any{
+			"includeThoughts": true,
 		}
 	}
 
 	projectID := config.Cfg.GoogleCloudProject
-	baseModel := config.GetBaseModelName(modelFromPath)
 
 	return map[string]any{
-		"model":   baseModel,
+		"model":   modelFromPath,
 		"project": projectID,
 		"request": nativeReq,
 	}

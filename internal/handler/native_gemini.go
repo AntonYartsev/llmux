@@ -47,7 +47,7 @@ func configModelToResponse(m config.ModelInfo) geminiModelResponse {
 // returns all available Gemini models in native Gemini API format
 func GeminiListModels(gb *backend.GeminiBackend) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		models := config.GenerateAllGeminiModels()
+		models := config.GeminiBaseModels
 		resp := make([]geminiModelResponse, len(models))
 		for i, m := range models {
 			resp[i] = configModelToResponse(m)
@@ -66,10 +66,9 @@ func GeminiGetModel(gb *backend.GeminiBackend) gin.HandlerFunc {
 		// normalise to bare model name (without "models/" prefix) for matching
 		bare := strings.TrimPrefix(modelParam, "models/")
 
-		models := config.GenerateAllGeminiModels()
+		models := config.GeminiBaseModels
 		for _, m := range models {
-			// m.Name is always "models/<id>".
-			if m.Name == "models/"+bare || m.Name == modelParam {
+			if m.Name == bare || m.Name == modelParam {
 				c.JSON(http.StatusOK, configModelToResponse(m))
 				return
 			}
