@@ -145,6 +145,10 @@ func GetUserAgent() string {
 // strips variant suffixes from a model name to return the underlying base model identifier
 // compound suffixes are matched first
 func GetBaseModelName(model string) string {
+	// strip vendor prefix first (e.g. "gemini/gemini-2.5-pro" -> "gemini-2.5-pro")
+	if _, bare := ParsePrefixedModel(model); bare != "" {
+		model = bare
+	}
 	for _, suffix := range []string{"-search-maxthinking", "-search-nothinking", "-maxthinking", "-nothinking", "-search"} {
 		if strings.HasSuffix(model, suffix) {
 			return model[:len(model)-len(suffix)]

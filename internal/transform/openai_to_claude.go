@@ -3,6 +3,8 @@ package transform
 import (
 	"encoding/json"
 	"strings"
+
+	"llmux/internal/config"
 )
 
 // prepended system prompt when targeting Claude
@@ -209,7 +211,9 @@ func OpenAIRequestToClaude(req *ChatRequest) map[string]any {
 
 	result["messages"] = messages
 
-	result["model"] = req.Model
+	// strip vendor prefix (e.g. "claude/claude-sonnet-4-6" -> "claude-sonnet-4-6")
+	_, bareModel := config.ParsePrefixedModel(req.Model)
+	result["model"] = bareModel
 
 	if mt := req.EffectiveMaxTokens(); mt != nil && *mt > 0 {
 		result["max_tokens"] = *mt
