@@ -14,7 +14,7 @@
 One endpoint, any model.
 
 ## The idea
-Use Gemini CLI and Claude Code as an OpenAI-compatible provider
+Use Gemini CLI and Claude Code as an [OpenAI-compatible](https://developers.openai.com/api/reference/overview) provider
 ```
 Any OpenAI-compatible app
         ↓
