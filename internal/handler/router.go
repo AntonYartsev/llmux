@@ -272,27 +272,25 @@ func streamWorker(
 		}
 	}
 
-	// for Gemini backend, emit the initial role announcement chunk
+	// Emit the initial role announcement chunk
 	// (OpenAI streaming always starts with a chunk containing role: "assistant")
-	if bname == "gemini" {
-		roleChunk := map[string]any{
-			"id":      responseID,
-			"object":  "chat.completion.chunk",
-			"created": ts,
-			"model":   model,
-			"choices": []any{
-				map[string]any{
-					"index":         0,
-					"delta":         map[string]any{"role": "assistant", "content": ""},
-					"logprobs":      nil,
-					"finish_reason": nil,
-				},
+	roleChunk := map[string]any{
+		"id":      responseID,
+		"object":  "chat.completion.chunk",
+		"created": ts,
+		"model":   model,
+		"choices": []any{
+			map[string]any{
+				"index":         0,
+				"delta":         map[string]any{"role": "assistant", "content": ""},
+				"logprobs":      nil,
+				"finish_reason": nil,
 			},
-			"system_fingerprint": nil,
-		}
-		if b, err := json.Marshal(roleChunk); err == nil {
-			send(b)
-		}
+		},
+		"system_fingerprint": nil,
+	}
+	if b, err := json.Marshal(roleChunk); err == nil {
+		send(b)
 	}
 
 	for chunk := range chunkCh {
