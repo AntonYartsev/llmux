@@ -14,18 +14,27 @@ import (
 )
 
 const (
-	geminiAuthBaseURL  = "https://accounts.google.com/o/oauth2/v2/auth"
-	geminiTokenURL     = "https://oauth2.googleapis.com/token"
-	geminiRedirectURI  = "http://localhost:8085/callback"
-	geminiCallbackAddr = ":8085"
+	geminiAuthBaseURL         = "https://accounts.google.com/o/oauth2/v2/auth"
+	geminiTokenURL            = "https://oauth2.googleapis.com/token"
+	geminiDefaultCallbackHost = "localhost"
+	geminiCallbackPort        = "8085"
 )
 
 // Gemini OAuth2 authorization Code flow
-func RunGeminiOAuthFlow(store *CredentialStore) error {
+// callbackHost and callbackPort override the defaults used in the redirect URI
+func RunGeminiOAuthFlow(store *CredentialStore, callbackHost, callbackPort string) error {
+	if callbackHost == "" {
+		callbackHost = geminiDefaultCallbackHost
+	}
+	if callbackPort == "" {
+		callbackPort = geminiCallbackPort
+	}
+	redirectURI := "http://" + callbackHost + ":" + callbackPort + "/callback"
+
 	// build authorization URL
 	params := url.Values{}
 	params.Set("client_id", config.GeminiClientID)
-	params.Set("redirect_uri", geminiRedirectURI)
+	params.Set("redirect_uri", redirectURI)
 	params.Set("response_type", "code")
 	params.Set("scope", strings.Join(config.GeminiScopes, " "))
 	params.Set("access_type", "offline")
@@ -40,7 +49,7 @@ func RunGeminiOAuthFlow(store *CredentialStore) error {
 
 	mux := http.NewServeMux()
 	srv := &http.Server{
-		Addr:    geminiCallbackAddr,
+		Addr:    ":" + callbackPort,
 		Handler: mux,
 	}
 
@@ -79,7 +88,7 @@ func RunGeminiOAuthFlow(store *CredentialStore) error {
 	_ = srv.Shutdown(context.Background())
 
 	// exchange the authorization code for tokens
-	creds, err := exchangeCodeForTokens(authCode)
+	creds, err := exchangeCodeForTokens(authCode, redirectURI)
 	if err != nil {
 		return fmt.Errorf("token exchange failed: %w", err)
 	}
@@ -158,13 +167,13 @@ type tokenResponse struct {
 }
 
 // posts the authorization code to the token endpoint and returns a populated GeminiCredentials struct
-func exchangeCodeForTokens(code string) (*GeminiCredentials, error) {
+func exchangeCodeForTokens(code, redirectURI string) (*GeminiCredentials, error) {
 	form := url.Values{}
 	form.Set("grant_type", "authorization_code")
 	form.Set("client_id", config.GeminiClientID)
 	form.Set("client_secret", config.GeminiClientSecret)
 	form.Set("code", code)
-	form.Set("redirect_uri", geminiRedirectURI)
+	form.Set("redirect_uri", redirectURI)
 
 	resp, err := http.PostForm(geminiTokenURL, form)
 	if err != nil {

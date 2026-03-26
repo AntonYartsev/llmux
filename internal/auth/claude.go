@@ -17,10 +17,21 @@ import (
 	"llmux/internal/config"
 )
 
-const claudeRedirectURI = "http://localhost:53692/callback"
+const (
+	claudeDefaultCallbackHost = "localhost"
+	claudeCallbackPort        = "53692"
+)
 
 // Claude OAuth2 authorization Code + PKCE flow
-func RunClaudeOAuthFlow(store *CredentialStore) error {
+// callbackHost and callbackPort override the defaults used in the redirect URI
+func RunClaudeOAuthFlow(store *CredentialStore, callbackHost, callbackPort string) error {
+	if callbackHost == "" {
+		callbackHost = claudeDefaultCallbackHost
+	}
+	if callbackPort == "" {
+		callbackPort = claudeCallbackPort
+	}
+	redirectURI := "http://" + callbackHost + ":" + callbackPort + "/callback"
 	// generate PKCE (proof key for code exchange) verifier (32 random bytes -> base64url)
 	verifierBytes := make([]byte, 32)
 	if _, err := io.ReadFull(rand.Reader, verifierBytes); err != nil {
@@ -43,7 +54,7 @@ func RunClaudeOAuthFlow(store *CredentialStore) error {
 	params := url.Values{}
 	params.Set("client_id", config.ClaudeClientID)
 	params.Set("response_type", "code")
-	params.Set("redirect_uri", claudeRedirectURI)
+	params.Set("redirect_uri", redirectURI)
 	params.Set("scope", strings.Join(config.ClaudeScopes, " "))
 	params.Set("code_challenge", challenge)
 	params.Set("code_challenge_method", "S256")
@@ -59,7 +70,7 @@ func RunClaudeOAuthFlow(store *CredentialStore) error {
 	errCh := make(chan error, 1)
 
 	mux := http.NewServeMux()
-	srv := &http.Server{Addr: ":53692", Handler: mux}
+	srv := &http.Server{Addr: ":" + callbackPort, Handler: mux}
 
 	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
@@ -111,7 +122,7 @@ func RunClaudeOAuthFlow(store *CredentialStore) error {
 		"grant_type":    "authorization_code",
 		"client_id":     config.ClaudeClientID,
 		"code":          authCode,
-		"redirect_uri":  claudeRedirectURI,
+		"redirect_uri":  redirectURI,
 		"code_verifier": verifier,
 		"state":         state,
 	})

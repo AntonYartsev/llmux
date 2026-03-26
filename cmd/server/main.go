@@ -86,8 +86,21 @@ func setupSlog(cfg config.AppConfig) {
 // handle the auth subcommand
 func runAuth() {
 	provider := ""
-	if len(os.Args) > 2 {
-		provider = os.Args[2]
+	callbackHost := ""
+	callbackPort := ""
+
+	// parse: llmux auth <provider> [--callback-host <host>] [--callback-port <port>]
+	for i := 2; i < len(os.Args); i++ {
+		switch {
+		case os.Args[i] == "--callback-host" && i+1 < len(os.Args):
+			callbackHost = os.Args[i+1]
+			i++
+		case os.Args[i] == "--callback-port" && i+1 < len(os.Args):
+			callbackPort = os.Args[i+1]
+			i++
+		case provider == "":
+			provider = os.Args[i]
+		}
 	}
 
 	store := auth.NewCredentialStore(config.Cfg.CredentialFile)
@@ -97,19 +110,19 @@ func runAuth() {
 
 	switch provider {
 	case "gemini":
-		if err := auth.RunGeminiOAuthFlow(store); err != nil {
+		if err := auth.RunGeminiOAuthFlow(store, callbackHost, callbackPort); err != nil {
 			fmt.Fprintf(os.Stderr, "Gemini auth failed: %v\n", err)
 			os.Exit(1)
 		}
 		fmt.Println("Gemini authentication successful.")
 	case "claude":
-		if err := auth.RunClaudeOAuthFlow(store); err != nil {
+		if err := auth.RunClaudeOAuthFlow(store, callbackHost, callbackPort); err != nil {
 			fmt.Fprintf(os.Stderr, "Claude auth failed: %v\n", err)
 			os.Exit(1)
 		}
 		fmt.Println("Claude authentication successful.")
 	default:
-		fmt.Println("Usage: llmux auth [gemini|claude]")
+		fmt.Println("Usage: llmux auth [gemini|claude] [--callback-host <host>] [--callback-port <port>]")
 	}
 }
 
