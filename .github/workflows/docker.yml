@@ -1,10 +1,6 @@
 name: Docker
 
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
-    branches: [main]
   push:
     tags:
       - "v*"
@@ -16,9 +12,6 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    if: >
-      github.event_name == 'push' ||
-      github.event.workflow_run.conclusion == 'success'
     steps:
       - uses: actions/checkout@v4
 
@@ -41,7 +34,7 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha,prefix=
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest
 
       - uses: docker/build-push-action@v6
         with:
