@@ -413,3 +413,45 @@ func TestOpenAIToClaude_Tools(t *testing.T) {
 		t.Errorf("input_schema type: got %v", schema["type"])
 	}
 }
+
+func TestOpenAIToClaude_WebSearchPreviewIgnored(t *testing.T) {
+	req := &ChatRequest{
+		Model:    "claude-sonnet-4-6",
+		Messages: []ChatMessage{{Role: "user", Content: "search the web"}},
+		Tools: []map[string]interface{}{
+			{"type": "web_search_preview"},
+			{
+				"type": "function",
+				"function": map[string]interface{}{
+					"name":        "get_weather",
+					"description": "Get weather",
+					"parameters":  map[string]interface{}{"type": "object"},
+				},
+			},
+		},
+	}
+	result := OpenAIRequestToClaude(req)
+
+	tools, ok := result["tools"].([]map[string]any)
+	if !ok || len(tools) != 1 {
+		t.Fatalf("expected 1 tool (web_search_preview ignored), got %d", len(tools))
+	}
+	if tools[0]["name"] != "get_weather" {
+		t.Errorf("tool name: got %v, want get_weather", tools[0]["name"])
+	}
+}
+
+func TestOpenAIToClaude_OnlyWebSearchPreview(t *testing.T) {
+	req := &ChatRequest{
+		Model:    "claude-sonnet-4-6",
+		Messages: []ChatMessage{{Role: "user", Content: "search"}},
+		Tools: []map[string]interface{}{
+			{"type": "web_search_preview"},
+		},
+	}
+	result := OpenAIRequestToClaude(req)
+
+	if _, ok := result["tools"]; ok {
+		t.Error("tools should not be set when only web_search_preview is present")
+	}
+}

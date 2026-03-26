@@ -94,30 +94,111 @@ func TestBuildGeminiPayloadFromNative_ThinkingBudgetPreserved(t *testing.T) {
 	}
 }
 
-func TestBuildGeminiPayloadFromNative_SearchModel(t *testing.T) {
+func TestBuildGeminiPayloadFromNative_DefaultThinkingConfig(t *testing.T) {
 	config.Cfg.GoogleCloudProject = "proj"
 
 	native := map[string]any{}
-	result := BuildGeminiPayloadFromNative(native, "gemini-2.5-pro-search")
+	result := BuildGeminiPayloadFromNative(native, "gemini-2.5-pro")
 
 	req := result["request"].(map[string]any)
-	tools, ok := req["tools"].([]any)
+	genCfg := req["generationConfig"].(map[string]any)
+	thinkingCfg, ok := genCfg["thinkingConfig"].(map[string]any)
+	if !ok {
+		t.Fatal("thinkingConfig should be set")
+	}
+	if thinkingCfg["includeThoughts"] != true {
+		t.Error("includeThoughts should be true by default")
+	}
+}
+
+func TestOpenAIRequestToGemini_WebSearchPreview(t *testing.T) {
+	req := &ChatRequest{
+		Model:    "gemini-2.5-flash",
+		Messages: []ChatMessage{{Role: "user", Content: "search the web"}},
+		Tools: []map[string]interface{}{
+			{"type": "web_search_preview"},
+		},
+	}
+	result := OpenAIRequestToGemini(req)
+
+	tools, ok := result["tools"].([]map[string]interface{})
 	if !ok || len(tools) == 0 {
-		t.Fatal("tools should be set for search model")
+		t.Fatal("tools should be set")
 	}
 	foundSearch := false
-	for _, t := range tools {
-		if tm, ok := t.(map[string]any); ok {
-			if _, ok := tm["googleSearch"]; ok {
-				foundSearch = true
-				break
-			}
+	for _, tool := range tools {
+		if _, ok := tool["googleSearch"]; ok {
+			foundSearch = true
+			break
 		}
 	}
 	if !foundSearch {
-		t.Error("googleSearch tool should be present for search model")
+		t.Error("googleSearch tool should be present when web_search_preview is in tools")
 	}
-	if got, want := result["model"], "gemini-2.5-pro"; got != want {
-		t.Errorf("model = %q, want %q", got, want)
+}
+
+func TestOpenAIRequestToGemini_WebSearchPreviewWithFunctionTools(t *testing.T) {
+	req := &ChatRequest{
+		Model:    "gemini-2.5-flash",
+		Messages: []ChatMessage{{Role: "user", Content: "search and use tool"}},
+		Tools: []map[string]interface{}{
+			{"type": "web_search_preview"},
+			{
+				"type": "function",
+				"function": map[string]interface{}{
+					"name":        "get_weather",
+					"description": "Get weather",
+					"parameters":  map[string]interface{}{"type": "object"},
+				},
+			},
+		},
+	}
+	result := OpenAIRequestToGemini(req)
+
+	tools, ok := result["tools"].([]map[string]interface{})
+	if !ok || len(tools) < 2 {
+		t.Fatalf("expected at least 2 tool entries, got %d", len(tools))
+	}
+	foundSearch := false
+	foundFunction := false
+	for _, tool := range tools {
+		if _, ok := tool["googleSearch"]; ok {
+			foundSearch = true
+		}
+		if _, ok := tool["functionDeclarations"]; ok {
+			foundFunction = true
+		}
+	}
+	if !foundSearch {
+		t.Error("googleSearch tool missing")
+	}
+	if !foundFunction {
+		t.Error("functionDeclarations missing")
+	}
+}
+
+func TestOpenAIRequestToGemini_ReasoningEffort(t *testing.T) {
+	effort := "high"
+	req := &ChatRequest{
+		Model:           "gemini-2.5-pro",
+		Messages:        []ChatMessage{{Role: "user", Content: "think hard"}},
+		ReasoningEffort: &effort,
+	}
+	result := OpenAIRequestToGemini(req)
+
+	genCfg, ok := result["generationConfig"].(map[string]interface{})
+	if !ok {
+		t.Fatal("generationConfig missing")
+	}
+	thinkingCfg, ok := genCfg["thinkingConfig"].(map[string]interface{})
+	if !ok {
+		t.Fatal("thinkingConfig missing")
+	}
+	budget, ok := thinkingCfg["thinkingBudget"].(int)
+	if !ok {
+		t.Fatal("thinkingBudget missing")
+	}
+	if budget != 32768 {
+		t.Errorf("thinkingBudget = %d, want 32768", budget)
 	}
 }

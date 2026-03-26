@@ -39,11 +39,10 @@ func (g *GeminiBackend) Name() string { return "gemini" }
 // reports whether Gemini credentials are present in the store
 func (g *GeminiBackend) IsAvailable() bool { return g.store.GetGemini() != nil }
 
-// returns the full set of Gemini models (base + all variants)
+// returns the full set of supported Gemini models
 func (g *GeminiBackend) ListModels() []ModelInfo {
-	geminiModels := config.GenerateAllGeminiModels()
-	result := make([]ModelInfo, len(geminiModels))
-	for i, m := range geminiModels {
+	result := make([]ModelInfo, len(config.GeminiBaseModels))
+	for i, m := range config.GeminiBaseModels {
 		result[i] = ModelInfo{
 			ID:          m.Name,
 			Provider:    "gemini",
