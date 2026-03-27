@@ -409,7 +409,7 @@ func TestOpenAIToClaude_Tools(t *testing.T) {
 	if schema == nil {
 		t.Fatal("input_schema missing")
 	}
-	if schema["type"] != "OBJECT" {
+	if schema["type"] != "object" {
 		t.Errorf("input_schema type: got %v", schema["type"])
 	}
 }
