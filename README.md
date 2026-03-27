@@ -116,6 +116,7 @@ Env vars, `.env` file, or `--flags`. Priority: flags → env → `.env` → defa
 
 ## Roadmap
 
+- [ ] Raycast web search support
 - [ ] Anthropic-compatible endpoint (`/v1/messages`) — use Claude Code with Gemini
 - [ ] Gemini-compatible endpoint (`generateContent`) — use Gemini CLI with Claude
 - [ ] Codex (Open Ai) backend
