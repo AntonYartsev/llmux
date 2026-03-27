@@ -284,7 +284,7 @@ func OpenAIRequestToClaude(req *ChatRequest) map[string]any {
 				t["description"] = desc
 			}
 			if params, ok := fn["parameters"].(map[string]interface{}); ok {
-				t["input_schema"] = NormalizeSchema(params)
+				t["input_schema"] = params
 			}
 			claudeTools = append(claudeTools, t)
 		}
