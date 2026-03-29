@@ -455,3 +455,84 @@ func TestOpenAIToClaude_OnlyWebSearchPreview(t *testing.T) {
 		t.Error("tools should not be set when only web_search_preview is present")
 	}
 }
+
+func TestOpenAIToClaude_UserMetadata(t *testing.T) {
+	user := "user-123"
+	req := &ChatRequest{
+		Model:    "claude-sonnet-4-6",
+		Messages: []ChatMessage{{Role: "user", Content: "Hi"}},
+		User:     &user,
+		Metadata: map[string]string{"request_id": "abc"},
+	}
+	result := OpenAIRequestToClaude(req)
+
+	meta, ok := result["metadata"].(map[string]any)
+	if !ok {
+		t.Fatal("metadata missing from Claude request")
+	}
+	if meta["user_id"] != "user-123" {
+		t.Errorf("expected user_id=user-123, got %v", meta["user_id"])
+	}
+}
+
+func TestOpenAIToClaude_ReasoningEffortExpanded(t *testing.T) {
+	tests := []struct {
+		input    string
+		wantNorm string
+	}{
+		{"low", "low"},
+		{"medium", "medium"},
+		{"high", "high"},
+		{"none", "low"},
+		{"minimal", "low"},
+		{"xhigh", "max"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			effort := tt.input
+			req := &ChatRequest{
+				Model:           "claude-sonnet-4-6",
+				Messages:        []ChatMessage{{Role: "user", Content: "Hi"}},
+				ReasoningEffort: &effort,
+			}
+			result := OpenAIRequestToClaude(req)
+			oc, ok := result["output_config"].(map[string]any)
+			if !ok {
+				t.Fatal("output_config missing")
+			}
+			if oc["effort"] != tt.wantNorm {
+				t.Errorf("effort=%q: got %q, want %q", tt.input, oc["effort"], tt.wantNorm)
+			}
+		})
+	}
+}
+
+func TestOpenAIToClaude_DeveloperRole(t *testing.T) {
+	req := &ChatRequest{
+		Model: "claude-sonnet-4-6",
+		Messages: []ChatMessage{
+			{Role: "developer", Content: "You must always respond in JSON"},
+			{Role: "user", Content: "Hello"},
+		},
+	}
+	result := OpenAIRequestToClaude(req)
+
+	systemBlocks := result["system"].([]map[string]any)
+	found := false
+	for _, block := range systemBlocks {
+		if text, _ := block["text"].(string); text == "You must always respond in JSON" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("developer message not found in system blocks: %v", systemBlocks)
+	}
+
+	messages := result["messages"].([]map[string]any)
+	for _, msg := range messages {
+		if msg["role"] == "developer" {
+			t.Error("developer role should not appear in Claude messages")
+		}
+	}
+}

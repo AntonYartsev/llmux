@@ -1,0 +1,1029 @@
+openapi: 3.1.0
+
+info:
+  title: OpenAI Chat Completions API
+  version: "2026-03-29"
+  description: |
+    OpenAPI-спека для эндпоинта POST /v1/chat/completions.
+    Де-факто стандарт для LLM-совместимых прокси (Ollama, vLLM, LiteLLM, llmux и др.).
+
+    **Статус**: Стабильный, поддерживается OpenAI параллельно с новым Responses API.
+    **Источник**: https://platform.openai.com/docs/api-reference/chat
+    **Ревизия**: 2026-03-29 — актуальна на дату составления.
+
+    ### История ревизий
+    | Дата       | Что изменилось |
+    |------------|----------------|
+    | 2026-03-29 | Первая версия: полный набор параметров включая max_completion_tokens, stream_options, Structured Outputs, tool calling v2, reasoning_effort |
+
+  contact:
+    url: https://platform.openai.com/docs/api-reference/chat
+
+servers:
+  - url: https://api.openai.com/v1
+    description: OpenAI Production
+
+security:
+  - BearerAuth: []
+
+paths:
+  /chat/completions:
+    post:
+      operationId: createChatCompletion
+      summary: Create a chat completion
+      description: |
+        Создаёт ответ модели для заданного диалога.
+        Поддерживает текст, изображения, audio, tool calling, streaming, Structured Outputs.
+      tags:
+        - Chat Completions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatCompletionRequest'
+            examples:
+              simple:
+                summary: Простой запрос
+                value:
+                  model: gpt-4o
+                  messages:
+                    - role: system
+                      content: You are a helpful assistant.
+                    - role: user
+                      content: Привет!
+              with_tools:
+                summary: Запрос с tool calling
+                value:
+                  model: gpt-4o
+                  messages:
+                    - role: user
+                      content: Какая погода в Москве?
+                  tools:
+                    - type: function
+                      function:
+                        name: get_weather
+                        description: Get current weather
+                        parameters:
+                          type: object
+                          properties:
+                            location:
+                              type: string
+                          required: [location]
+                        strict: true
+                  tool_choice: auto
+              structured_output:
+                summary: Structured Outputs (json_schema)
+                value:
+                  model: gpt-4o
+                  messages:
+                    - role: user
+                      content: Extract the name and age.
+                  response_format:
+                    type: json_schema
+                    json_schema:
+                      name: person
+                      strict: true
+                      schema:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                          age:
+                            type: integer
+                        required: [name, age]
+                        additionalProperties: false
+      responses:
+        "200":
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatCompletionResponse'
+              example:
+                id: chatcmpl-B9MBs8CjcvOU2jLn4n570S5qMJKcT
+                object: chat.completion
+                created: 1741569952
+                model: gpt-4o-2024-11-20
+                system_fingerprint: fp_50cad350e4
+                service_tier: default
+                choices:
+                  - index: 0
+                    message:
+                      role: assistant
+                      content: Привет! Чем могу помочь?
+                      refusal: null
+                      tool_calls: null
+                    finish_reason: stop
+                    logprobs: null
+                usage:
+                  prompt_tokens: 20
+                  completion_tokens: 12
+                  total_tokens: 32
+                  prompt_tokens_details:
+                    cached_tokens: 0
+                    audio_tokens: 0
+                  completion_tokens_details:
+                    reasoning_tokens: 0
+                    audio_tokens: 0
+                    accepted_prediction_tokens: 0
+                    rejected_prediction_tokens: 0
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "429":
+          $ref: '#/components/responses/RateLimitExceeded'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: OpenAI API Key Пример - Authorization Bearer sk-...
+
+  schemas:
+    # ─────────────────────────────────────────────
+    # REQUEST
+    # ─────────────────────────────────────────────
+    ChatCompletionRequest:
+      type: object
+      required:
+        - model
+        - messages
+      properties:
+        model:
+          type: string
+          description: |
+            ID модели. Примеры: gpt-4o, gpt-4o-mini, gpt-4.1, gpt-4.1-mini, gpt-4.1-nano,
+            o3, o4-mini. Можно указывать pinned snapshot: gpt-4o-2024-11-20.
+          examples:
+            - gpt-4o
+            - gpt-4.1
+            - o4-mini
+
+        messages:
+          type: array
+          description: Массив сообщений диалога. Порядок важен.
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Message'
+
+        # Sampling
+        temperature:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 2
+          default: 1
+          description: |
+            Температура сэмплинга. 0 = детерминированный вывод, 2 = максимальная случайность.
+            Не используй вместе с top_p.
+
+        top_p:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          default: 1
+          description: |
+            Nucleus sampling: учитывает только топ top_p вероятностной массы.
+            Не используй вместе с temperature.
+
+        n:
+          type: integer
+          minimum: 1
+          maximum: 128
+          default: 1
+          description: Количество вариантов ответа (choices). Оплата за все варианты.
+
+        # Token limits
+        max_completion_tokens:
+          type: integer
+          nullable: true
+          description: |
+            Максимум токенов в completion (включая reasoning-токены у o-series).
+            Рекомендуется вместо устаревшего max_tokens.
+
+        max_tokens:
+          type: integer
+          nullable: true
+          deprecated: true
+          description: |
+            DEPRECATED. Используй max_completion_tokens.
+            Несовместим с reasoning-моделями (o-series).
+
+        # Stop sequences
+        stop:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+              maxItems: 4
+          nullable: true
+          description: Стоп-последовательности (до 4). Модель остановится при встрече любой из них.
+
+        # Penalties
+        frequency_penalty:
+          type: number
+          format: float
+          minimum: -2
+          maximum: 2
+          default: 0
+          description: Штраф за повторение частых токенов. Снижает дословные повторы.
+
+        presence_penalty:
+          type: number
+          format: float
+          minimum: -2
+          maximum: 2
+          default: 0
+          description: Штраф за токены, которые уже встретились в тексте. Поощряет новые темы.
+
+        logit_bias:
+          type: object
+          additionalProperties:
+            type: number
+            minimum: -100
+            maximum: 100
+          nullable: true
+          description: |
+            Смещение logit для конкретных token ID (строка → число).
+            -100 = полный запрет, 100 = гарантированный выбор.
+
+        # Logprobs
+        logprobs:
+          type: boolean
+          default: false
+          description: Возвращать ли log-вероятности токенов в ответе.
+
+        top_logprobs:
+          type: integer
+          minimum: 0
+          maximum: 20
+          nullable: true
+          description: Количество топ-токенов с logprob на каждой позиции. Требует logprobs=true.
+
+        # Determinism
+        seed:
+          type: integer
+          nullable: true
+          description: |
+            Beta. Детерминизм на best-effort основе. Одинаковый seed + параметры → похожий ответ.
+            Отслеживай system_fingerprint для мониторинга изменений backend.
+
+        # Streaming
+        stream:
+          type: boolean
+          default: false
+          description: |
+            true → Server-Sent Events (SSE) поток чанков.
+            false → единый JSON-ответ.
+
+        stream_options:
+          type: object
+          nullable: true
+          description: Настройки стриминга. Работает только при stream=true.
+          properties:
+            include_usage:
+              type: boolean
+              default: false
+              description: |
+                Добавить usage в последний чанк стрима (перед [DONE]).
+
+        # Response format
+        response_format:
+          nullable: true
+          oneOf:
+            - $ref: '#/components/schemas/ResponseFormatText'
+            - $ref: '#/components/schemas/ResponseFormatJsonObject'
+            - $ref: '#/components/schemas/ResponseFormatJsonSchema'
+          discriminator:
+            propertyName: type
+          description: Формат вывода модели.
+
+        # Tools
+        tools:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/Tool'
+          description: Список инструментов, доступных модели.
+
+        tool_choice:
+          nullable: true
+          oneOf:
+            - type: string
+              enum: [none, auto, required]
+              description: |
+                none — не вызывать tools.
+                auto — модель решает сама.
+                required — модель обязана вызвать хотя бы один tool.
+            - $ref: '#/components/schemas/SpecificToolChoice'
+          description: Управление выбором инструмента.
+
+        parallel_tool_calls:
+          type: boolean
+          default: true
+          description: Разрешить параллельный вызов нескольких инструментов в одном ответе.
+
+        # Storage & metadata
+        store:
+          type: boolean
+          nullable: true
+          description: Сохранить completion для последующего чтения через API. По умолчанию — по настройкам проекта.
+
+        metadata:
+          type: object
+          nullable: true
+          maxProperties: 16
+          additionalProperties:
+            type: string
+            maxLength: 512
+          description: До 16 пар key-value (key ≤64 chars, value ≤512 chars).
+
+        # User identifier
+        user:
+          type: string
+          maxLength: 64
+          nullable: true
+          description: Stable end-user identifier для abuse detection. Рекомендуется хэш email/username.
+
+        # Service tier
+        service_tier:
+          type: string
+          nullable: true
+          enum: [auto, default, flex, priority]
+          default: auto
+          description: |
+            auto — использовать tier из настроек проекта.
+            default — стандартный pricing/performance.
+            flex / priority — соответствующие tiers (если доступны).
+
+        # Multimodal / Audio
+        modalities:
+          type: array
+          nullable: true
+          items:
+            type: string
+            enum: [text, audio]
+          description: Типы вывода. По умолчанию ["text"]. ["text","audio"] для аудио-моделей.
+
+        audio:
+          type: object
+          nullable: true
+          description: Настройки аудио-ответа (только для моделей с поддержкой audio output).
+          properties:
+            voice:
+              type: string
+              enum: [alloy, ash, ballad, cedar, coral, echo, fable, marin, onyx, nova, sage, shimmer, verse]
+            format:
+              type: string
+              enum: [mp3, opus, aac, flac, wav, pcm16]
+
+        # Predicted Outputs
+        prediction:
+          type: object
+          nullable: true
+          description: |
+            Predicted Output. Ускоряет генерацию, когда большая часть ответа известна заранее.
+            Модель сравнивает prediction с реальным output и пропускает совпадающие токены.
+            Использование отражается в usage.completion_tokens_details:
+            accepted_prediction_tokens и rejected_prediction_tokens.
+          properties:
+            type:
+              type: string
+              enum: [content]
+            content:
+              oneOf:
+                - type: string
+                  description: Предсказанный текст.
+                - type: array
+                  items:
+                    $ref: '#/components/schemas/TextContentPart'
+
+        # Web search (для search-моделей)
+        web_search_options:
+          type: object
+          nullable: true
+          description: |
+            Настройки web search. Работает с search-моделями (gpt-4o-search-preview и т.п.).
+          properties:
+            search_context_size:
+              type: string
+              enum: [low, medium, high]
+              default: medium
+              description: Количество контекстного окна под поисковые результаты.
+            user_location:
+              type: object
+              nullable: true
+              description: Гео-контекст для локализации поиска.
+              properties:
+                type:
+                  type: string
+                  enum: [approximate]
+                city:
+                  type: string
+                  nullable: true
+                country:
+                  type: string
+                  nullable: true
+                  description: ISO 2-letter country code.
+                region:
+                  type: string
+                  nullable: true
+                timezone:
+                  type: string
+                  nullable: true
+                  description: IANA timezone.
+
+        # Reasoning (o-series)
+        reasoning_effort:
+          type: string
+          nullable: true
+          enum: [none, minimal, low, medium, high, xhigh]
+          description: |
+            Только для reasoning-моделей (o3, o4-mini, gpt-5 и др.).
+            Управляет количеством reasoning-токенов.
+            none/minimal = минимум reasoning, low = быстро/дёшево, medium = баланс (default),
+            high = точнее, xhigh = максимум (gpt-5.1-codex-max и др.).
+            Поддержка конкретных значений зависит от модели.
+
+    # ─────────────────────────────────────────────
+    # MESSAGES
+    # ─────────────────────────────────────────────
+    Message:
+      oneOf:
+        - $ref: '#/components/schemas/SystemMessage'
+        - $ref: '#/components/schemas/DeveloperMessage'
+        - $ref: '#/components/schemas/UserMessage'
+        - $ref: '#/components/schemas/AssistantMessage'
+        - $ref: '#/components/schemas/ToolMessage'
+      discriminator:
+        propertyName: role
+
+    SystemMessage:
+      type: object
+      required: [role, content]
+      properties:
+        role:
+          type: string
+          enum: [system]
+        content:
+          type: string
+          description: Системный промпт. Устанавливает поведение модели.
+        name:
+          type: string
+          description: Опциональное имя участника (для multi-agent сценариев).
+
+    DeveloperMessage:
+      type: object
+      required: [role, content]
+      description: |
+        Новая роль (alias для system в новых моделях). Имеет более высокий приоритет доверия.
+      properties:
+        role:
+          type: string
+          enum: [developer]
+        content:
+          type: string
+        name:
+          type: string
+
+    UserMessage:
+      type: object
+      required: [role, content]
+      properties:
+        role:
+          type: string
+          enum: [user]
+        content:
+          oneOf:
+            - type: string
+              description: Простой текстовый контент.
+            - type: array
+              description: Multimodal content parts (текст + изображения + аудио).
+              items:
+                oneOf:
+                  - $ref: '#/components/schemas/TextContentPart'
+                  - $ref: '#/components/schemas/ImageContentPart'
+                  - $ref: '#/components/schemas/AudioInputContentPart'
+        name:
+          type: string
+
+    AssistantMessage:
+      type: object
+      required: [role]
+      properties:
+        role:
+          type: string
+          enum: [assistant]
+        content:
+          type: string
+          nullable: true
+          description: Текстовый ответ ассистента. null если модель вызвала tool.
+        refusal:
+          type: string
+          nullable: true
+          description: Отказной ответ при активации content filter.
+        tool_calls:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/ToolCall'
+          description: Вызовы инструментов, сгенерированные моделью.
+        audio:
+          type: object
+          nullable: true
+          description: Аудио-ответ (при modalities включает audio).
+          properties:
+            id:
+              type: string
+            expires_at:
+              type: integer
+            data:
+              type: string
+              description: Base64-encoded audio data.
+            transcript:
+              type: string
+        name:
+          type: string
+
+    ToolMessage:
+      type: object
+      required: [role, tool_call_id, content]
+      description: Результат вызова инструмента, передаваемый обратно модели.
+      properties:
+        role:
+          type: string
+          enum: [tool]
+        tool_call_id:
+          type: string
+          description: ID из соответствующего tool_calls[].id ассистентского сообщения.
+        content:
+          type: string
+          description: Результат выполнения инструмента (обычно JSON-строка).
+
+    # ─────────────────────────────────────────────
+    # CONTENT PARTS
+    # ─────────────────────────────────────────────
+    TextContentPart:
+      type: object
+      required: [type, text]
+      properties:
+        type:
+          type: string
+          enum: [text]
+        text:
+          type: string
+
+    ImageContentPart:
+      type: object
+      required: [type, image_url]
+      properties:
+        type:
+          type: string
+          enum: [image_url]
+        image_url:
+          type: object
+          required: [url]
+          properties:
+            url:
+              type: string
+              description: |
+                URL изображения (https://...) или base64 data URI:
+                "data:image/jpeg;base64,<base64data>"
+            detail:
+              type: string
+              enum: [auto, low, high]
+              default: auto
+              description: |
+                Детализация обработки изображения.
+                low = быстро/дёшево (512x512), high = полное разрешение с tiling.
+
+    AudioInputContentPart:
+      type: object
+      required: [type, input_audio]
+      description: Аудио-ввод (только для моделей с audio input поддержкой).
+      properties:
+        type:
+          type: string
+          enum: [input_audio]
+        input_audio:
+          type: object
+          required: [data, format]
+          properties:
+            data:
+              type: string
+              description: Base64-encoded audio data.
+            format:
+              type: string
+              enum: [mp3, wav]
+
+    # ─────────────────────────────────────────────
+    # TOOLS
+    # ─────────────────────────────────────────────
+    Tool:
+      type: object
+      required: [type, function]
+      properties:
+        type:
+          type: string
+          enum: [function]
+        function:
+          $ref: '#/components/schemas/FunctionDefinition'
+
+    FunctionDefinition:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          pattern: '^[a-zA-Z0-9_-]{1,64}$'
+          description: Имя функции. Только a-z, A-Z, 0-9, _, -. Max 64 символа.
+        description:
+          type: string
+          description: Описание функции. Используется моделью для принятия решения о вызове.
+        parameters:
+          type: object
+          description: JSON Schema параметров функции. Если пропущено — функция без параметров.
+        strict:
+          type: boolean
+          nullable: true
+          default: false
+          description: |
+            true → Structured Outputs для tool calling. Модель строго соответствует schema.
+            Поддерживается подмножество JSON Schema. Рекомендуется для production.
+
+    ToolCall:
+      type: object
+      required: [id, type, function]
+      properties:
+        id:
+          type: string
+          description: Уникальный ID вызова (формат call_...). Использовать в ToolMessage.tool_call_id.
+        type:
+          type: string
+          enum: [function]
+        function:
+          type: object
+          required: [name, arguments]
+          properties:
+            name:
+              type: string
+            arguments:
+              type: string
+              description: |
+                JSON-строка с аргументами. Всегда парсить JSON перед использованием.
+                Внимание: модель может галлюцинировать параметры — валидируй перед вызовом.
+
+    SpecificToolChoice:
+      type: object
+      required: [type, function]
+      description: Принудительный выбор конкретного инструмента.
+      properties:
+        type:
+          type: string
+          enum: [function]
+        function:
+          type: object
+          required: [name]
+          properties:
+            name:
+              type: string
+
+    # ─────────────────────────────────────────────
+    # RESPONSE FORMAT
+    # ─────────────────────────────────────────────
+    ResponseFormatText:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [text]
+
+    ResponseFormatJsonObject:
+      type: object
+      required: [type]
+      description: |
+        Legacy JSON mode. Гарантирует валидный JSON, но не соответствие схеме.
+        Требует инструкцию "respond in JSON" в system/user сообщении.
+      properties:
+        type:
+          type: string
+          enum: [json_object]
+
+    ResponseFormatJsonSchema:
+      type: object
+      required: [type, json_schema]
+      description: |
+        Structured Outputs. Гарантирует соответствие JSON Schema.
+        Рекомендуется для всех случаев, где нужен структурированный вывод.
+        Поддерживается начиная с gpt-4o-2024-08-06.
+      properties:
+        type:
+          type: string
+          enum: [json_schema]
+        json_schema:
+          type: object
+          required: [name, schema]
+          properties:
+            name:
+              type: string
+              description: Имя схемы (используется для документирования).
+            description:
+              type: string
+            schema:
+              type: object
+              description: JSON Schema объект.
+            strict:
+              type: boolean
+              default: false
+              description: |
+                true → строгое соответствие. Требует additionalProperties:false на всех объектах
+                и все поля в required.
+
+    # ─────────────────────────────────────────────
+    # RESPONSE
+    # ─────────────────────────────────────────────
+    ChatCompletionResponse:
+      type: object
+      required: [id, object, created, model, choices, usage]
+      properties:
+        id:
+          type: string
+          description: Уникальный ID completion (формат chatcmpl-...).
+        object:
+          type: string
+          enum: [chat.completion]
+        created:
+          type: integer
+          description: Unix timestamp создания.
+        model:
+          type: string
+          description: Фактически использованная модель (с snapshot суффиксом).
+        system_fingerprint:
+          type: string
+          description: Хэш backend-конфигурации. Изменение означает смену поведения при одинаковом seed.
+        service_tier:
+          type: string
+          nullable: true
+          enum: [auto, default, flex, priority]
+        choices:
+          type: array
+          items:
+            $ref: '#/components/schemas/Choice'
+        usage:
+          $ref: '#/components/schemas/Usage'
+
+    Choice:
+      type: object
+      required: [index, message, finish_reason]
+      properties:
+        index:
+          type: integer
+          description: Индекс варианта (0..n-1).
+        message:
+          $ref: '#/components/schemas/AssistantMessage'
+        finish_reason:
+          type: string
+          nullable: true
+          enum: [stop, length, tool_calls, content_filter, function_call]
+          description: |
+            stop — естественный конец или stop-последовательность.
+            length — достигнут max_completion_tokens.
+            tool_calls — модель вызвала инструменты.
+            content_filter — контент заблокирован.
+            function_call — deprecated, заменено tool_calls.
+            null — в стриме, пока генерация не завершена.
+        logprobs:
+          nullable: true
+          description: Log-вероятности токенов (если logprobs=true).
+          type: object
+          properties:
+            content:
+              type: array
+              nullable: true
+              items:
+                $ref: '#/components/schemas/TokenLogprob'
+
+    TokenLogprob:
+      type: object
+      properties:
+        token:
+          type: string
+        bytes:
+          type: array
+          nullable: true
+          items:
+            type: integer
+        logprob:
+          type: number
+        top_logprobs:
+          type: array
+          items:
+            type: object
+            properties:
+              token:
+                type: string
+              bytes:
+                type: array
+                nullable: true
+                items:
+                  type: integer
+              logprob:
+                type: number
+
+    Usage:
+      type: object
+      required: [prompt_tokens, completion_tokens, total_tokens]
+      properties:
+        prompt_tokens:
+          type: integer
+          description: Токены в input (messages + system prompt).
+        completion_tokens:
+          type: integer
+          description: Токены в generated output.
+        total_tokens:
+          type: integer
+          description: Сумма prompt_tokens + completion_tokens.
+        prompt_tokens_details:
+          type: object
+          properties:
+            cached_tokens:
+              type: integer
+              description: Токены из prompt cache (скидка ~50% от цены input).
+            audio_tokens:
+              type: integer
+        completion_tokens_details:
+          type: object
+          properties:
+            reasoning_tokens:
+              type: integer
+              description: Скрытые reasoning-токены o-series моделей (оплачиваются отдельно).
+            audio_tokens:
+              type: integer
+            accepted_prediction_tokens:
+              type: integer
+              description: Токены из speculative decoding (predicted output), принятые моделью.
+            rejected_prediction_tokens:
+              type: integer
+
+    # ─────────────────────────────────────────────
+    # STREAMING CHUNK
+    # ─────────────────────────────────────────────
+    ChatCompletionChunk:
+      type: object
+      description: |
+        SSE-чанк при stream=true. Поле object = "chat.completion.chunk".
+        delta содержит инкрементальный контент.
+      required: [id, object, created, model, choices]
+      properties:
+        id:
+          type: string
+        object:
+          type: string
+          enum: [chat.completion.chunk]
+        created:
+          type: integer
+        model:
+          type: string
+        system_fingerprint:
+          type: string
+        service_tier:
+          type: string
+          nullable: true
+        choices:
+          type: array
+          items:
+            type: object
+            properties:
+              index:
+                type: integer
+              delta:
+                type: object
+                description: Инкрементальный контент чанка.
+                properties:
+                  role:
+                    type: string
+                    enum: [assistant]
+                    description: Присутствует только в первом чанке.
+                  content:
+                    type: string
+                    nullable: true
+                  tool_calls:
+                    type: array
+                    nullable: true
+                    items:
+                      type: object
+                      properties:
+                        index:
+                          type: integer
+                        id:
+                          type: string
+                        type:
+                          type: string
+                        function:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            arguments:
+                              type: string
+              finish_reason:
+                type: string
+                nullable: true
+              logprobs:
+                nullable: true
+                type: object
+        usage:
+          nullable: true
+          description: Присутствует только в последнем чанке при stream_options.include_usage=true.
+          $ref: '#/components/schemas/Usage'
+
+    # ─────────────────────────────────────────────
+    # ERRORS
+    # ─────────────────────────────────────────────
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [message, type]
+          properties:
+            message:
+              type: string
+              description: Человекочитаемое описание ошибки.
+            type:
+              type: string
+              description: Машиночитаемый тип ошибки.
+              examples:
+                - invalid_request_error
+                - authentication_error
+                - rate_limit_error
+                - server_error
+            param:
+              type: string
+              nullable: true
+              description: Параметр, вызвавший ошибку (если применимо).
+            code:
+              type: string
+              nullable: true
+              description: Код ошибки для программной обработки.
+              examples:
+                - model_not_found
+                - context_length_exceeded
+                - missing_required_parameter
+                - invalid_api_key
+
+  responses:
+    BadRequest:
+      description: Невалидный запрос (400)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              message: "Missing required parameter: 'messages'."
+              type: invalid_request_error
+              param: messages
+              code: missing_required_parameter
+
+    Unauthorized:
+      description: Неверный или отсутствующий API key (401)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              message: Incorrect API key provided.
+              type: authentication_error
+              param: null
+              code: invalid_api_key
+
+    RateLimitExceeded:
+      description: Превышен rate limit (429)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              message: Rate limit reached for model gpt-4o.
+              type: rate_limit_error
+              param: null
+              code: rate_limit_exceeded
+
+    InternalServerError:
+      description: Внутренняя ошибка сервера (500)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
