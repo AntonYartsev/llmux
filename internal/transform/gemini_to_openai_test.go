@@ -418,6 +418,68 @@ func TestGeminiStreamChunkToOpenAI_FinalChunk(t *testing.T) {
 	}
 }
 
+func TestGeminiResponseToOpenAI_UsageDetails(t *testing.T) {
+	resp := GeminiResponseToOpenAI(geminiResponse([]any{
+		geminiCandidate("STOP", []any{map[string]any{"text": "Hi"}}),
+	}, map[string]any{
+		"promptTokenCount":        float64(100),
+		"candidatesTokenCount":    float64(50),
+		"totalTokenCount":         float64(150),
+		"cachedContentTokenCount": float64(30),
+	}), "gemini-2.5-pro")
+
+	usage, _ := resp["usage"].(map[string]any)
+	ptd, ok := usage["prompt_tokens_details"].(map[string]any)
+	if !ok {
+		t.Fatal("prompt_tokens_details missing")
+	}
+	if ptd["cached_tokens"] != 30 {
+		t.Errorf("cached_tokens: got %v, want 30", ptd["cached_tokens"])
+	}
+
+	ctd, ok := usage["completion_tokens_details"].(map[string]any)
+	if !ok {
+		t.Fatal("completion_tokens_details missing")
+	}
+	if _, exists := ctd["reasoning_tokens"]; !exists {
+		t.Error("reasoning_tokens missing")
+	}
+}
+
+func TestGeminiResponseToOpenAI_MessageRefusal(t *testing.T) {
+	resp := GeminiResponseToOpenAI(geminiResponse([]any{
+		geminiCandidate("STOP", []any{map[string]any{"text": "Hi"}}),
+	}, nil), "gemini-2.5-pro")
+
+	choices, _ := resp["choices"].([]any)
+	choice, _ := choices[0].(map[string]any)
+	msg, _ := choice["message"].(map[string]any)
+	if _, exists := msg["refusal"]; !exists {
+		t.Error("refusal field missing from message")
+	}
+}
+
+func TestGeminiResponseToOpenAI_ServiceTier(t *testing.T) {
+	resp := GeminiResponseToOpenAI(geminiResponse([]any{
+		geminiCandidate("STOP", []any{map[string]any{"text": "Hi"}}),
+	}, nil), "gemini-2.5-pro")
+
+	if resp["service_tier"] != "default" {
+		t.Errorf("service_tier: got %v, want 'default'", resp["service_tier"])
+	}
+}
+
+func TestGeminiStreamChunkToOpenAI_ServiceTier(t *testing.T) {
+	chunk := geminiResponse([]any{
+		geminiCandidate("", []any{map[string]any{"text": "Hi"}}),
+	}, nil)
+	result := GeminiStreamChunkToOpenAI(chunk, "gemini-2.5-pro", "chatcmpl-test")
+
+	if result["service_tier"] != "default" {
+		t.Errorf("service_tier: got %v, want 'default'", result["service_tier"])
+	}
+}
+
 func TestGeminiStreamChunkToOpenAI_ImageDelta(t *testing.T) {
 	chunk := geminiResponse([]any{
 		geminiCandidate("STOP", []any{

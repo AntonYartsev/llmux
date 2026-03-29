@@ -202,3 +202,74 @@ func TestOpenAIRequestToGemini_ReasoningEffort(t *testing.T) {
 		t.Errorf("thinkingBudget = %d, want 32768", budget)
 	}
 }
+
+func TestOpenAIRequestToGemini_DeveloperRole(t *testing.T) {
+	req := &ChatRequest{
+		Model: "gemini-2.5-flash",
+		Messages: []ChatMessage{
+			{Role: "developer", Content: "You must respond in JSON"},
+			{Role: "user", Content: "Hello"},
+		},
+	}
+	result := OpenAIRequestToGemini(req)
+
+	sysInstr, ok := result["systemInstruction"].(map[string]interface{})
+	if !ok {
+		t.Fatal("systemInstruction missing")
+	}
+	parts, _ := sysInstr["parts"].([]map[string]interface{})
+	if len(parts) == 0 {
+		t.Fatal("systemInstruction has no parts")
+	}
+	found := false
+	for _, p := range parts {
+		if text, _ := p["text"].(string); text == "You must respond in JSON" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("developer message not in systemInstruction parts: %v", parts)
+	}
+
+	contents, _ := result["contents"].([]map[string]interface{})
+	for _, c := range contents {
+		if c["role"] == "developer" {
+			t.Error("developer role should not appear in Gemini contents")
+		}
+	}
+}
+
+func TestOpenAIRequestToGemini_ReasoningEffortExpanded(t *testing.T) {
+	tests := []struct {
+		input      string
+		model      string
+		wantBudget int
+	}{
+		{"none", "gemini-2.5-pro", 0},
+		{"xhigh", "gemini-2.5-pro", 32768},
+		{"xhigh", "gemini-2.5-flash", 24576},
+		{"xhigh", "gemini-3-pro-preview", 45000},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input+"_"+tt.model, func(t *testing.T) {
+			effort := tt.input
+			req := &ChatRequest{
+				Model:           tt.model,
+				Messages:        []ChatMessage{{Role: "user", Content: "Hi"}},
+				ReasoningEffort: &effort,
+			}
+			result := OpenAIRequestToGemini(req)
+			genCfg, _ := result["generationConfig"].(map[string]interface{})
+			thinkCfg, _ := genCfg["thinkingConfig"].(map[string]interface{})
+			budget := 0
+			if b, ok := thinkCfg["thinkingBudget"].(int); ok {
+				budget = b
+			} else if b, ok := thinkCfg["thinkingBudget"].(float64); ok {
+				budget = int(b)
+			}
+			if budget != tt.wantBudget {
+				t.Errorf("effort=%q model=%q: got budget %d, want %d", tt.input, tt.model, budget, tt.wantBudget)
+			}
+		})
+	}
+}

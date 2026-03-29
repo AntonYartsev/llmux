@@ -1,0 +1,1438 @@
+openapi: 3.1.0
+
+info:
+  title: OpenAI Responses API
+  version: "2026-03-29"
+  description: |
+    OpenAPI-спека для нового Responses API OpenAI (POST /v1/responses).
+    Это следующее поколение Chat Completions API с нативной агентной поддержкой.
+
+    **Статус**: GA. OpenAI рекомендует для всех новых проектов начиная с 2025 года.
+    **Источник**: https://platform.openai.com/docs/api-reference/responses
+    **Ключевые отличия от Chat Completions**:
+    - `input` вместо `messages` (но принимает тот же массив message-объектов)
+    - `output` вместо `choices` (массив typed items)
+    - `instructions` вместо system message
+    - `previous_response_id` для stateful multi-turn без ручного управления историей
+    - Built-in tools: `web_search`, `file_search`, `computer_use`, `code_interpreter`, `mcp`
+    - `text.format` вместо `response_format`
+    - `reasoning` объект вместо `reasoning_effort`
+    - Хранение включено по умолчанию (`store: true`)
+
+    ### История ревизий
+    | Дата       | Что изменилось |
+    |------------|----------------|
+    | 2026-03-29 | Первая версия: полный набор параметров GA включая MCP tools, reasoning summary, include param, Conversations API |
+
+  contact:
+    url: https://platform.openai.com/docs/api-reference/responses
+
+servers:
+  - url: https://api.openai.com/v1
+    description: OpenAI Production
+
+security:
+  - BearerAuth: []
+
+paths:
+  /responses:
+    post:
+      operationId: createResponse
+      summary: Create a model response
+      description: |
+        Создаёт ответ модели. Рекомендуемый эндпоинт для всех новых проектов.
+        Поддерживает агентные сценарии, built-in tools, stateful multi-turn через previous_response_id.
+      tags:
+        - Responses
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResponseRequest'
+            examples:
+              simple_text:
+                summary: Простой текстовый запрос
+                value:
+                  model: gpt-4.1
+                  input: Привет! Как дела?
+
+              with_instructions:
+                summary: С системными инструкциями
+                value:
+                  model: gpt-4o
+                  instructions: You are a helpful assistant. Always respond in Russian.
+                  input: What is the capital of France?
+
+              messages_input:
+                summary: Input как массив сообщений (совместимо с Chat Completions)
+                value:
+                  model: gpt-4o
+                  input:
+                    - role: developer
+                      content: Speak like a pirate.
+                    - role: user
+                      content: Are semicolons optional in JavaScript?
+
+              with_web_search:
+                summary: С built-in web search
+                value:
+                  model: gpt-4.1
+                  input: What are the latest developments in Go 1.24?
+                  tools:
+                    - type: web_search
+
+              with_function_tool:
+                summary: С пользовательской функцией
+                value:
+                  model: gpt-4o
+                  input: What is the weather in Moscow?
+                  tools:
+                    - type: function
+                      name: get_weather
+                      description: Get current weather
+                      parameters:
+                        type: object
+                        properties:
+                          location:
+                            type: string
+                        required: [location]
+                      strict: true
+
+              stateful_multiturn:
+                summary: Multi-turn через previous_response_id
+                value:
+                  model: gpt-4.1
+                  input: And what about Berlin?
+                  previous_response_id: resp_abc123xyz
+
+              reasoning_model:
+                summary: Reasoning модель с effort
+                value:
+                  model: o4-mini
+                  input: Solve this optimization problem step by step.
+                  reasoning:
+                    effort: high
+                    summary: auto
+
+              structured_output:
+                summary: Structured Outputs через text.format
+                value:
+                  model: gpt-4o
+                  input: Extract name and age from this text.
+                  text:
+                    format:
+                      type: json_schema
+                      name: person
+                      strict: true
+                      schema:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                          age:
+                            type: integer
+                        required: [name, age]
+                        additionalProperties: false
+
+      responses:
+        "200":
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseObject'
+              example:
+                id: resp_67cb32528d6881909eb2859a55e18a85
+                object: response
+                created_at: 1741369938.0
+                model: gpt-4o-2024-11-20
+                status: completed
+                error: null
+                incomplete_details: null
+                instructions: null
+                metadata: {}
+                usage:
+                  input_tokens: 20
+                  output_tokens: 15
+                  total_tokens: 35
+                  input_tokens_details:
+                    cached_tokens: 0
+                  output_tokens_details:
+                    reasoning_tokens: 0
+                output:
+                  - id: msg_67cb3252cfac8190865744873aada798
+                    type: message
+                    role: assistant
+                    status: completed
+                    content:
+                      - type: output_text
+                        text: Great! How can I help you today?
+                        annotations: []
+                output_text: Great! How can I help you today?
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "429":
+          $ref: '#/components/responses/RateLimitExceeded'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /responses/{response_id}:
+    get:
+      operationId: getResponse
+      summary: Retrieve a response
+      description: Получить сохранённый response по ID. Только для store=true.
+      tags:
+        - Responses
+      parameters:
+        - name: response_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Response object
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseObject'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      operationId: deleteResponse
+      summary: Delete a response
+      description: Удалить сохранённый response.
+      tags:
+        - Responses
+      parameters:
+        - name: response_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  object:
+                    type: string
+                    enum: [response.deleted]
+                  deleted:
+                    type: boolean
+
+  /responses/{response_id}/cancel:
+    post:
+      operationId: cancelResponse
+      summary: Cancel an in-progress response
+      description: Отменить выполняющийся (streaming) response.
+      tags:
+        - Responses
+      parameters:
+        - name: response_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Cancelled response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseObject'
+
+  /responses/{response_id}/input_items:
+    get:
+      operationId: listInputItems
+      summary: List input items for a response
+      description: Вернуть все input items, использованные при создании response.
+      tags:
+        - Responses
+      parameters:
+        - name: response_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: after
+          in: query
+          schema:
+            type: string
+        - name: before
+          in: query
+          schema:
+            type: string
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+      responses:
+        "200":
+          description: List of input items
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object:
+                    type: string
+                    enum: [list]
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/InputItem'
+                  has_more:
+                    type: boolean
+                  first_id:
+                    type: string
+                    nullable: true
+                  last_id:
+                    type: string
+                    nullable: true
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+
+  schemas:
+    # ─────────────────────────────────────────────
+    # REQUEST
+    # ─────────────────────────────────────────────
+    ResponseRequest:
+      type: object
+      required:
+        - model
+        - input
+      properties:
+        model:
+          type: string
+          description: |
+            ID модели. Примеры: gpt-4o, gpt-4o-mini, gpt-4.1, gpt-4.1-mini, gpt-4.1-nano,
+            gpt-5, o3, o4-mini. Pinned snapshots: gpt-4.1-2025-04-14.
+          examples:
+            - gpt-4.1
+            - gpt-4o
+            - o4-mini
+            - gpt-5
+
+        input:
+          description: |
+            Входные данные для модели. Может быть:
+            - string: простой текстовый вопрос
+            - array: массив message-объектов (совместим с Chat Completions messages)
+            - array: массив input items (включая function_call_output, mcp_approval_response)
+          oneOf:
+            - type: string
+              description: Простой текстовый prompt.
+            - type: array
+              description: Массив input items.
+              items:
+                $ref: '#/components/schemas/InputItem'
+
+        instructions:
+          type: string
+          nullable: true
+          description: |
+            Системные инструкции для модели (аналог system message в Chat Completions).
+            Применяется только к текущему запросу — не сохраняется в цепочке previous_response_id.
+
+        # Multi-turn state
+        previous_response_id:
+          type: string
+          nullable: true
+          description: |
+            ID предыдущего response для продолжения разговора.
+            Модель автоматически включает контекст из предыдущего ответа.
+            Альтернатива ручному управлению историей messages.
+
+        # Sampling
+        temperature:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 2
+          default: 1
+          description: Температура сэмплинга. 0–2. Не использовать вместе с top_p.
+
+        top_p:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          default: 1
+          description: Nucleus sampling. Не использовать вместе с temperature.
+
+        max_output_tokens:
+          type: integer
+          nullable: true
+          description: |
+            Максимум токенов в output. Включает reasoning-токены для o-series.
+            Аналог max_completion_tokens в Chat Completions.
+
+        # Streaming
+        stream:
+          type: boolean
+          default: false
+          description: |
+            true → SSE-поток событий (response.* events).
+            false → единый JSON-объект.
+
+        # Stop sequences
+        stop:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+              maxItems: 4
+          nullable: true
+
+        # Penalties
+        frequency_penalty:
+          type: number
+          format: float
+          minimum: -2
+          maximum: 2
+          default: 0
+
+        presence_penalty:
+          type: number
+          format: float
+          minimum: -2
+          maximum: 2
+          default: 0
+
+        # Tools
+        tools:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/ResponseTool'
+          description: Список инструментов (built-in и пользовательские).
+
+        tool_choice:
+          nullable: true
+          oneOf:
+            - type: string
+              enum: [none, auto, required]
+            - type: object
+              required: [type]
+              properties:
+                type:
+                  type: string
+                  enum: [function, hosted_tool]
+                name:
+                  type: string
+                  description: Имя конкретного инструмента для forced choice.
+          description: |
+            none — не использовать tools.
+            auto — модель решает сама (default).
+            required — обязательно вызвать хотя бы один tool.
+            object — принудительный выбор конкретного инструмента.
+
+        parallel_tool_calls:
+          type: boolean
+          default: true
+
+        # Text format (вместо response_format)
+        text:
+          type: object
+          nullable: true
+          description: |
+            Настройки текстового вывода. Аналог response_format из Chat Completions.
+          properties:
+            format:
+              oneOf:
+                - $ref: '#/components/schemas/TextFormatText'
+                - $ref: '#/components/schemas/TextFormatJsonObject'
+                - $ref: '#/components/schemas/TextFormatJsonSchema'
+
+        # Reasoning (расширенная версия по сравнению с Chat Completions)
+        reasoning:
+          type: object
+          nullable: true
+          description: |
+            Настройки reasoning. Только для reasoning-моделей (o3, o4-mini, gpt-5 и др.).
+          properties:
+            effort:
+              type: string
+              enum: [none, minimal, low, medium, high, xhigh]
+              default: medium
+              description: |
+                Количество reasoning-токенов.
+                none/minimal = минимум reasoning, low = быстро/дёшево,
+                medium = баланс (default), high = максимальная точность,
+                xhigh = максимум (gpt-5.1-codex-max и др.).
+                Поддержка конкретных значений зависит от модели.
+            summary:
+              type: string
+              nullable: true
+              enum: [auto, concise, detailed]
+              description: |
+                Возвращать ли summary reasoning в output.
+                auto — модель решает формат.
+                concise / detailed — конкретный формат (поддержка зависит от модели).
+
+        # Background (асинхронное выполнение)
+        background:
+          type: boolean
+          default: false
+          description: |
+            Запуск генерации в фоновом режиме. При true response сразу возвращается
+            со status=in_progress. Результат можно получить через GET /responses/{id}.
+            Только background responses можно отменить через POST /responses/{id}/cancel.
+
+        # Include (дополнительные данные в ответе)
+        include:
+          type: array
+          nullable: true
+          items:
+            type: string
+            enum:
+              - reasoning.encrypted_content
+              - file_search_call.results
+              - message.input_image.image_url
+              - computer_call_output.output.image_url
+              - web_search_call.action.sources
+              - code_interpreter_call.outputs
+              - message.output_text.logprobs
+          description: |
+            Дополнительные данные для включения в response.
+            reasoning.encrypted_content — зашифрованные reasoning tokens (для multi-turn с reasoning моделями).
+            file_search_call.results — результаты file search.
+            web_search_call.action.sources — источники web search.
+            code_interpreter_call.outputs — вывод code interpreter.
+            message.output_text.logprobs — log-вероятности токенов.
+
+        # Truncation
+        truncation:
+          type: string
+          nullable: true
+          enum: [auto, disabled]
+          default: disabled
+          description: |
+            Стратегия усечения при превышении context window.
+            auto — автоматически усекать старые сообщения.
+            disabled — вернуть ошибку при превышении.
+
+        # Storage
+        store:
+          type: boolean
+          default: true
+          description: |
+            Сохранять ли response. По умолчанию true (в отличие от Chat Completions).
+            false — не сохранять, нельзя получить через GET /responses/{id}.
+
+        metadata:
+          type: object
+          nullable: true
+          maxProperties: 16
+          additionalProperties:
+            type: string
+            maxLength: 512
+
+        user:
+          type: string
+          maxLength: 64
+          nullable: true
+
+        service_tier:
+          type: string
+          nullable: true
+          enum: [auto, default, flex, priority]
+          default: auto
+
+    # ─────────────────────────────────────────────
+    # INPUT ITEMS
+    # ─────────────────────────────────────────────
+    InputItem:
+      oneOf:
+        - $ref: '#/components/schemas/InputMessageItem'
+        - $ref: '#/components/schemas/FunctionCallOutputItem'
+        - $ref: '#/components/schemas/McpApprovalResponseItem'
+      description: |
+        Union тип для элементов input массива.
+        Помимо стандартных message ролей, поддерживает специальные типы для agentic flow.
+
+    InputMessageItem:
+      type: object
+      required: [role]
+      description: |
+        Обычное сообщение в диалоге. Совместимо с Chat Completions message форматом.
+      properties:
+        role:
+          type: string
+          enum: [system, developer, user, assistant]
+        content:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                oneOf:
+                  - $ref: '#/components/schemas/TextContentPart'
+                  - $ref: '#/components/schemas/ImageContentPart'
+                  - $ref: '#/components/schemas/AudioInputContentPart'
+                  - $ref: '#/components/schemas/FileContentPart'
+        name:
+          type: string
+          nullable: true
+
+    FunctionCallOutputItem:
+      type: object
+      required: [type, call_id, output]
+      description: Результат вызова функции (аналог role:tool в Chat Completions).
+      properties:
+        type:
+          type: string
+          enum: [function_call_output]
+        call_id:
+          type: string
+          description: ID из соответствующего function_call output item.
+        output:
+          type: string
+          description: Результат выполнения функции (JSON-строка).
+
+    McpApprovalResponseItem:
+      type: object
+      required: [type, approve, approval_request_id]
+      description: Ответ на запрос аппрувала MCP tool вызова.
+      properties:
+        type:
+          type: string
+          enum: [mcp_approval_response]
+        approve:
+          type: boolean
+          description: true = разрешить выполнение MCP tool call.
+        approval_request_id:
+          type: string
+          description: ID из mcp_approval_request output item.
+
+    # ─────────────────────────────────────────────
+    # CONTENT PARTS
+    # ─────────────────────────────────────────────
+    TextContentPart:
+      type: object
+      required: [type, text]
+      properties:
+        type:
+          type: string
+          enum: [text, input_text]
+        text:
+          type: string
+
+    ImageContentPart:
+      type: object
+      required: [type, image_url]
+      properties:
+        type:
+          type: string
+          enum: [image_url, input_image]
+        image_url:
+          type: object
+          required: [url]
+          properties:
+            url:
+              type: string
+            detail:
+              type: string
+              enum: [auto, low, high]
+              default: auto
+
+    AudioInputContentPart:
+      type: object
+      required: [type, input_audio]
+      properties:
+        type:
+          type: string
+          enum: [input_audio]
+        input_audio:
+          type: object
+          required: [data, format]
+          properties:
+            data:
+              type: string
+              description: Base64-encoded audio.
+            format:
+              type: string
+              enum: [mp3, wav, ogg, flac, m4a, webm]
+
+    FileContentPart:
+      type: object
+      required: [type]
+      description: Файл из Files API или Vector Store.
+      properties:
+        type:
+          type: string
+          enum: [input_file]
+        file_id:
+          type: string
+          description: ID файла из Files API.
+        file_url:
+          type: string
+          description: URL для inline file data.
+
+    # ─────────────────────────────────────────────
+    # TOOLS
+    # ─────────────────────────────────────────────
+    ResponseTool:
+      oneOf:
+        - $ref: '#/components/schemas/FunctionTool'
+        - $ref: '#/components/schemas/WebSearchTool'
+        - $ref: '#/components/schemas/FileSearchTool'
+        - $ref: '#/components/schemas/ComputerUseTool'
+        - $ref: '#/components/schemas/CodeInterpreterTool'
+        - $ref: '#/components/schemas/McpTool'
+      discriminator:
+        propertyName: type
+
+    FunctionTool:
+      type: object
+      required: [type, name]
+      description: |
+        Пользовательская функция. В Responses API схема отличается от Chat Completions:
+        поля name/description/parameters на верхнем уровне (без обёртки в "function").
+      properties:
+        type:
+          type: string
+          enum: [function]
+        name:
+          type: string
+          pattern: '^[a-zA-Z0-9_-]{1,64}$'
+        description:
+          type: string
+        parameters:
+          type: object
+          description: JSON Schema параметров.
+        strict:
+          type: boolean
+          nullable: true
+          default: false
+
+    WebSearchTool:
+      type: object
+      required: [type]
+      description: Built-in web search. Модель ищет актуальную информацию в интернете.
+      properties:
+        type:
+          type: string
+          enum: [web_search, web_search_2025_08_26]
+        search_context_size:
+          type: string
+          enum: [low, medium, high]
+          default: medium
+          description: Количество контекстного окна под поисковые результаты.
+        user_location:
+          type: object
+          nullable: true
+          description: Гео-контекст для локализации поиска.
+          properties:
+            type:
+              type: string
+              enum: [approximate]
+            city:
+              type: string
+              nullable: true
+            country:
+              type: string
+              nullable: true
+              description: ISO 2-letter country code (e.g. "US", "RU").
+            region:
+              type: string
+              nullable: true
+            timezone:
+              type: string
+              nullable: true
+              description: IANA timezone (e.g. "Europe/Moscow").
+        allowed_domains:
+          type: array
+          nullable: true
+          items:
+            type: string
+          description: Белый список доменов. null = все домены разрешены.
+        blocked_domains:
+          type: array
+          nullable: true
+          items:
+            type: string
+          description: Чёрный список доменов.
+
+    FileSearchTool:
+      type: object
+      required: [type]
+      description: Built-in file search по Vector Stores.
+      properties:
+        type:
+          type: string
+          enum: [file_search]
+        vector_store_ids:
+          type: array
+          items:
+            type: string
+          description: ID Vector Stores для поиска.
+        max_num_results:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 10
+        filters:
+          type: object
+          nullable: true
+          description: Фильтры по metadata файлов.
+        ranking_options:
+          type: object
+          nullable: true
+          properties:
+            ranker:
+              type: string
+              enum: [auto, default_2024_08_21]
+            score_threshold:
+              type: number
+              minimum: 0
+              maximum: 1
+
+    ComputerUseTool:
+      type: object
+      required: [type, display_width, display_height, environment]
+      description: Built-in computer use tool для управления рабочим столом/браузером.
+      properties:
+        type:
+          type: string
+          enum: [computer_use_preview]
+        display_width:
+          type: integer
+          description: Ширина экрана в пикселях.
+        display_height:
+          type: integer
+          description: Высота экрана в пикселях.
+        environment:
+          type: string
+          enum: [browser, linux, mac, windows, ubuntu]
+
+    CodeInterpreterTool:
+      type: object
+      required: [type]
+      description: Built-in code interpreter (Python sandbox).
+      properties:
+        type:
+          type: string
+          enum: [code_interpreter]
+        container:
+          oneOf:
+            - type: string
+              enum: [auto]
+            - type: object
+              properties:
+                type:
+                  type: string
+                  enum: [auto]
+                file_ids:
+                  type: array
+                  items:
+                    type: string
+                  description: Файлы, доступные в sandbox.
+
+    McpTool:
+      type: object
+      required: [type, server_label, server_url]
+      description: |
+        Remote MCP (Model Context Protocol) server tool.
+        Даёт модели доступ к инструментам внешних MCP серверов.
+      properties:
+        type:
+          type: string
+          enum: [mcp]
+        server_label:
+          type: string
+          description: Метка сервера для идентификации в output items.
+        server_url:
+          type: string
+          description: URL MCP сервера (SSE или HTTP endpoint).
+        allowed_tools:
+          type: array
+          nullable: true
+          items:
+            type: string
+          description: Список разрешённых tool names. null = все инструменты разрешены.
+        require_approval:
+          oneOf:
+            - type: string
+              enum: [never, always]
+            - type: object
+              properties:
+                never:
+                  type: object
+                  properties:
+                    tool_names:
+                      type: array
+                      items:
+                        type: string
+          default: always
+          description: |
+            never — не требовать аппрувал перед MCP вызовами.
+            always — всегда запрашивать аппрувал (default, безопаснее).
+        headers:
+          type: object
+          nullable: true
+          additionalProperties:
+            type: string
+          description: HTTP заголовки для аутентификации на MCP сервере.
+
+    # ─────────────────────────────────────────────
+    # TEXT FORMAT (вместо response_format)
+    # ─────────────────────────────────────────────
+    TextFormatText:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [text]
+
+    TextFormatJsonObject:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [json_object]
+
+    TextFormatJsonSchema:
+      type: object
+      required: [type, name, schema]
+      properties:
+        type:
+          type: string
+          enum: [json_schema]
+        name:
+          type: string
+        description:
+          type: string
+        schema:
+          type: object
+        strict:
+          type: boolean
+          default: false
+
+    # ─────────────────────────────────────────────
+    # RESPONSE OBJECT
+    # ─────────────────────────────────────────────
+    ResponseObject:
+      type: object
+      required: [id, object, created_at, model, output, usage]
+      properties:
+        id:
+          type: string
+          description: Уникальный ID ответа (формат resp_...).
+        object:
+          type: string
+          enum: [response]
+        created_at:
+          type: number
+          description: Unix timestamp (float) создания.
+        model:
+          type: string
+          description: Фактически использованная модель со snapshot суффиксом.
+        status:
+          type: string
+          enum: [completed, in_progress, incomplete, cancelled, failed]
+          description: |
+            completed — успешно завершён.
+            in_progress — выполняется (при polling/streaming).
+            incomplete — незавершён (truncation, cancel и т.д.).
+            cancelled — отменён через /cancel.
+            failed — ошибка выполнения.
+        error:
+          nullable: true
+          type: object
+          description: Ошибка выполнения (если status=failed).
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+        incomplete_details:
+          nullable: true
+          type: object
+          description: Причина незавершённости (если status=incomplete).
+          properties:
+            reason:
+              type: string
+              enum: [max_output_tokens, content_filter]
+        instructions:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          nullable: true
+        output:
+          type: array
+          description: Массив output items — typed элементы ответа.
+          items:
+            $ref: '#/components/schemas/OutputItem'
+        output_text:
+          type: string
+          nullable: true
+          description: |
+            Удобный helper: конкатенация всего текстового контента из output[].content[type=output_text].
+            Эквивалент choices[0].message.content в Chat Completions.
+        usage:
+          $ref: '#/components/schemas/ResponseUsage'
+        service_tier:
+          type: string
+          nullable: true
+
+    # ─────────────────────────────────────────────
+    # OUTPUT ITEMS
+    # ─────────────────────────────────────────────
+    OutputItem:
+      oneOf:
+        - $ref: '#/components/schemas/MessageOutputItem'
+        - $ref: '#/components/schemas/ReasoningOutputItem'
+        - $ref: '#/components/schemas/FunctionCallOutputItemResponse'
+        - $ref: '#/components/schemas/WebSearchCallOutputItem'
+        - $ref: '#/components/schemas/FileSearchCallOutputItem'
+        - $ref: '#/components/schemas/ComputerCallOutputItem'
+        - $ref: '#/components/schemas/McpCallOutputItem'
+        - $ref: '#/components/schemas/McpApprovalRequestOutputItem'
+        - $ref: '#/components/schemas/CodeInterpreterCallOutputItem'
+      discriminator:
+        propertyName: type
+
+    MessageOutputItem:
+      type: object
+      required: [id, type, role, content]
+      description: Текстовый (или multimodal) ответ ассистента.
+      properties:
+        id:
+          type: string
+          description: ID сообщения (формат msg_...).
+        type:
+          type: string
+          enum: [message]
+        role:
+          type: string
+          enum: [assistant]
+        status:
+          type: string
+          enum: [completed, in_progress, incomplete]
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/OutputContentPart'
+
+    ReasoningOutputItem:
+      type: object
+      required: [id, type]
+      description: Reasoning item (только для reasoning-моделей с включённым summary).
+      properties:
+        id:
+          type: string
+          description: ID reasoning item (формат rs_...).
+        type:
+          type: string
+          enum: [reasoning]
+        summary:
+          type: array
+          description: Summary reasoning в текстовом виде (если запрошен).
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum: [summary_text]
+              text:
+                type: string
+        encrypted_content:
+          type: string
+          nullable: true
+          description: |
+            Зашифрованные reasoning tokens (при include=[reasoning.encrypted_content]).
+            Передавать в следующий запрос для continuity reasoning.
+
+    FunctionCallOutputItemResponse:
+      type: object
+      required: [id, type, call_id, name, arguments]
+      description: Вызов пользовательской функции, сгенерированный моделью.
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [function_call]
+        call_id:
+          type: string
+          description: ID для сопоставления с function_call_output в следующем запросе.
+        name:
+          type: string
+        arguments:
+          type: string
+          description: JSON-строка аргументов.
+        status:
+          type: string
+          enum: [completed, in_progress, incomplete]
+
+    WebSearchCallOutputItem:
+      type: object
+      required: [id, type, status]
+      description: Результат built-in web search.
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [web_search_call]
+        status:
+          type: string
+          enum: [completed, in_progress, searching, failed]
+        queries:
+          type: array
+          nullable: true
+          items:
+            type: string
+          description: Поисковые запросы, выполненные моделью.
+
+    FileSearchCallOutputItem:
+      type: object
+      required: [id, type, status]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [file_search_call]
+        status:
+          type: string
+          enum: [completed, in_progress, searching, failed]
+        queries:
+          type: array
+          nullable: true
+          items:
+            type: string
+        results:
+          type: array
+          nullable: true
+          description: Найденные файлы (при include=[file_search_call.results]).
+          items:
+            type: object
+            properties:
+              file_id:
+                type: string
+              filename:
+                type: string
+              score:
+                type: number
+              text:
+                type: string
+
+    ComputerCallOutputItem:
+      type: object
+      required: [id, type, status, action]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [computer_call]
+        status:
+          type: string
+          enum: [completed, in_progress, failed]
+        action:
+          type: object
+          description: Действие на экране (click, type, screenshot и т.д.).
+          properties:
+            type:
+              type: string
+              enum: [click, double_click, type, key, scroll, screenshot, drag, wait]
+        call_id:
+          type: string
+
+    McpCallOutputItem:
+      type: object
+      required: [id, type, server_label, name]
+      description: Вызов инструмента на MCP сервере.
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [mcp_call]
+        server_label:
+          type: string
+        name:
+          type: string
+          description: Имя вызванного MCP инструмента.
+        arguments:
+          type: string
+          description: JSON-строка аргументов.
+        output:
+          type: string
+          nullable: true
+          description: Результат вызова (если выполнен).
+        error:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [completed, in_progress, failed]
+
+    McpApprovalRequestOutputItem:
+      type: object
+      required: [id, type, server_label, name]
+      description: Запрос аппрувала для MCP tool call (при require_approval=always).
+      properties:
+        id:
+          type: string
+          description: Передать в McpApprovalResponseItem.approval_request_id.
+        type:
+          type: string
+          enum: [mcp_approval_request]
+        server_label:
+          type: string
+        name:
+          type: string
+          description: Имя инструмента, ожидающего аппрувал.
+        arguments:
+          type: string
+          description: JSON-строка аргументов (для проверки перед аппрувалом).
+
+    CodeInterpreterCallOutputItem:
+      type: object
+      required: [id, type, status]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [code_interpreter_call]
+        status:
+          type: string
+          enum: [completed, in_progress, failed]
+        code:
+          type: string
+          nullable: true
+          description: Выполненный Python код.
+        outputs:
+          type: array
+          nullable: true
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum: [logs, image]
+              logs:
+                type: string
+                nullable: true
+              image:
+                type: object
+                nullable: true
+                properties:
+                  url:
+                    type: string
+
+    # ─────────────────────────────────────────────
+    # OUTPUT CONTENT PARTS
+    # ─────────────────────────────────────────────
+    OutputContentPart:
+      oneOf:
+        - $ref: '#/components/schemas/OutputTextPart'
+        - $ref: '#/components/schemas/OutputRefusalPart'
+        - $ref: '#/components/schemas/OutputAudioPart'
+      discriminator:
+        propertyName: type
+
+    OutputTextPart:
+      type: object
+      required: [type, text]
+      properties:
+        type:
+          type: string
+          enum: [output_text]
+        text:
+          type: string
+        annotations:
+          type: array
+          description: Аннотации (ссылки из web search и т.д.).
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum: [url_citation, file_citation, container_file_citation]
+              url:
+                type: string
+                nullable: true
+              title:
+                type: string
+                nullable: true
+              start_index:
+                type: integer
+              end_index:
+                type: integer
+        logprobs:
+          type: array
+          nullable: true
+          items:
+            type: object
+
+    OutputRefusalPart:
+      type: object
+      required: [type, refusal]
+      properties:
+        type:
+          type: string
+          enum: [refusal]
+        refusal:
+          type: string
+          description: Текст отказа от content filter.
+
+    OutputAudioPart:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [audio]
+        id:
+          type: string
+        expires_at:
+          type: integer
+        data:
+          type: string
+          description: Base64-encoded audio data.
+        transcript:
+          type: string
+
+    # ─────────────────────────────────────────────
+    # USAGE
+    # ─────────────────────────────────────────────
+    ResponseUsage:
+      type: object
+      required: [input_tokens, output_tokens, total_tokens]
+      properties:
+        input_tokens:
+          type: integer
+          description: Токены во входных данных (аналог prompt_tokens в Chat Completions).
+        output_tokens:
+          type: integer
+          description: Токены в ответе (аналог completion_tokens).
+        total_tokens:
+          type: integer
+        input_tokens_details:
+          type: object
+          properties:
+            cached_tokens:
+              type: integer
+              description: Токены из prompt cache.
+            audio_tokens:
+              type: integer
+        output_tokens_details:
+          type: object
+          properties:
+            reasoning_tokens:
+              type: integer
+              description: Reasoning-токены o-series (не видны в output, но оплачиваются).
+            audio_tokens:
+              type: integer
+
+    # ─────────────────────────────────────────────
+    # STREAMING EVENTS (SSE при stream=true)
+    # ─────────────────────────────────────────────
+    # При stream=true сервер отдаёт события:
+    # response.created          — начало создания
+    # response.in_progress      — идёт генерация
+    # response.output_item.added — новый output item добавлен
+    # response.content_part.added — новая content part
+    # response.output_text.delta — дельта текста
+    # response.output_text.done  — текст завершён
+    # response.function_call_arguments.delta
+    # response.function_call_arguments.done
+    # response.completed        — финальный event с полным response объектом
+    # response.failed           — ошибка
+    # response.incomplete       — незавершён (timeout/limit)
+
+    # ─────────────────────────────────────────────
+    # ERRORS
+    # ─────────────────────────────────────────────
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [message, type]
+          properties:
+            message:
+              type: string
+            type:
+              type: string
+              examples:
+                - invalid_request_error
+                - authentication_error
+                - rate_limit_error
+                - server_error
+            param:
+              type: string
+              nullable: true
+            code:
+              type: string
+              nullable: true
+              examples:
+                - model_not_found
+                - context_length_exceeded
+                - invalid_api_key
+
+  responses:
+    BadRequest:
+      description: Невалидный запрос (400)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    Unauthorized:
+      description: Неверный или отсутствующий API key (401)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    NotFound:
+      description: Response не найден (404)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    RateLimitExceeded:
+      description: Превышен rate limit (429)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    InternalServerError:
+      description: Внутренняя ошибка сервера (500)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'

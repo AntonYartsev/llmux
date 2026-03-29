@@ -17,6 +17,8 @@ type ChatMessage struct {
 	ToolCalls        []map[string]interface{} `json:"tool_calls,omitempty"`
 	ToolCallID       *string                  `json:"tool_call_id,omitempty"`
 	Name             *string                  `json:"name,omitempty"`
+	Refusal          *string                  `json:"refusal,omitempty"`
+	Audio            map[string]interface{}   `json:"audio,omitempty"`
 }
 
 // represents OpenAI stream_options parameter
@@ -43,6 +45,18 @@ type ChatRequest struct {
 	ReasoningEffort     *string                  `json:"reasoning_effort,omitempty"`
 	Tools               []map[string]interface{} `json:"tools,omitempty"`
 	ToolChoice          interface{}              `json:"tool_choice,omitempty"`
+	ParallelToolCalls   *bool                    `json:"parallel_tool_calls,omitempty"`
+	LogitBias           map[string]float64       `json:"logit_bias,omitempty"`
+	Logprobs            *bool                    `json:"logprobs,omitempty"`
+	TopLogprobs         *int                     `json:"top_logprobs,omitempty"`
+	Store               *bool                    `json:"store,omitempty"`
+	Metadata            map[string]string        `json:"metadata,omitempty"`
+	User                *string                  `json:"user,omitempty"`
+	ServiceTier         *string                  `json:"service_tier,omitempty"`
+	Modalities          []string                 `json:"modalities,omitempty"`
+	Audio               map[string]interface{}   `json:"audio,omitempty"`
+	Prediction          map[string]interface{}   `json:"prediction,omitempty"`
+	WebSearchOptions    map[string]interface{}   `json:"web_search_options,omitempty"`
 }
 
 // returns MaxCompletionTokens if set, otherwise MaxTokens
@@ -225,7 +239,7 @@ func OpenAIRequestToGemini(req *ChatRequest) map[string]interface{} {
 	for _, msg := range req.Messages {
 		role := msg.Role
 
-		if role == "system" {
+		if role == "system" || role == "developer" {
 			text := messageContentText(msg.Content)
 			if text != "" {
 				systemParts = append(systemParts, map[string]interface{}{"text": text})
@@ -478,6 +492,8 @@ func OpenAIRequestToGemini(req *ChatRequest) map[string]interface{} {
 	if req.ReasoningEffort != nil {
 		var thinkingBudget int
 		switch *req.ReasoningEffort {
+		case "none":
+			thinkingBudget = 0
 		case "minimal":
 			if strings.Contains(req.Model, "flash") {
 				thinkingBudget = 0
@@ -488,7 +504,7 @@ func OpenAIRequestToGemini(req *ChatRequest) map[string]interface{} {
 			thinkingBudget = 1000
 		case "medium":
 			thinkingBudget = -1
-		case "high":
+		case "high", "xhigh":
 			switch {
 			case strings.Contains(req.Model, "gemini-2.5-flash"):
 				thinkingBudget = 24576

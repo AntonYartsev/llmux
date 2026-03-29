@@ -104,7 +104,8 @@ func ClaudeResponseToOpenAI(claudeResp map[string]any, model string) map[string]
 
 	// build message object
 	message := map[string]any{
-		"role": "assistant",
+		"role":    "assistant",
+		"refusal": nil,
 	}
 	// OpenAI returns content: null when only tool_calls are present
 	if len(toolCalls) > 0 && content == "" {
@@ -120,17 +121,29 @@ func ClaudeResponseToOpenAI(claudeResp map[string]any, model string) map[string]
 	}
 
 	// build usage object
-	usageOut := map[string]any{
-		"prompt_tokens":     0,
-		"completion_tokens": 0,
-		"total_tokens":      0,
-	}
+	inputTokens := 0
+	outputTokens := 0
+	cachedTokens := 0
 	if usageIn, ok := claudeResp["usage"].(map[string]any); ok {
-		inputTokens := toInt(usageIn["input_tokens"])
-		outputTokens := toInt(usageIn["output_tokens"])
-		usageOut["prompt_tokens"] = inputTokens
-		usageOut["completion_tokens"] = outputTokens
-		usageOut["total_tokens"] = inputTokens + outputTokens
+		inputTokens = toInt(usageIn["input_tokens"])
+		outputTokens = toInt(usageIn["output_tokens"])
+		cachedTokens = toInt(usageIn["cache_read_input_tokens"])
+	}
+
+	usageOut := map[string]any{
+		"prompt_tokens":     inputTokens,
+		"completion_tokens": outputTokens,
+		"total_tokens":      inputTokens + outputTokens,
+		"prompt_tokens_details": map[string]any{
+			"cached_tokens": cachedTokens,
+			"audio_tokens":  0,
+		},
+		"completion_tokens_details": map[string]any{
+			"reasoning_tokens":           0,
+			"audio_tokens":               0,
+			"accepted_prediction_tokens": 0,
+			"rejected_prediction_tokens": 0,
+		},
 	}
 
 	return map[string]any{
@@ -148,6 +161,7 @@ func ClaudeResponseToOpenAI(claudeResp map[string]any, model string) map[string]
 		},
 		"usage":              usageOut,
 		"system_fingerprint": nil,
+		"service_tier":       "default",
 	}
 }
 
@@ -282,7 +296,19 @@ func ClaudeStreamEventToOpenAI(
 		if usage, ok := event["usage"].(map[string]any); ok {
 			outputTokens := toInt(usage["output_tokens"])
 			chunk["usage"] = map[string]any{
+				"prompt_tokens":     0,
 				"completion_tokens": outputTokens,
+				"total_tokens":      outputTokens,
+				"prompt_tokens_details": map[string]any{
+					"cached_tokens": 0,
+					"audio_tokens":  0,
+				},
+				"completion_tokens_details": map[string]any{
+					"reasoning_tokens":           0,
+					"audio_tokens":               0,
+					"accepted_prediction_tokens": 0,
+					"rejected_prediction_tokens": 0,
+				},
 			}
 		}
 
