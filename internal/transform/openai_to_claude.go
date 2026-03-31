@@ -95,7 +95,7 @@ func OpenAIRequestToClaude(req *ChatRequest) map[string]any {
 
 	for _, msg := range req.Messages {
 		switch msg.Role {
-		case "system":
+		case "system", "developer":
 			text := messageContentText(msg.Content)
 			if text != "" {
 				systemParts = append(systemParts, text)
@@ -258,6 +258,10 @@ func OpenAIRequestToClaude(req *ChatRequest) map[string]any {
 		switch effort {
 		case "low", "medium", "high", "max":
 			// valid as-is
+		case "none", "minimal":
+			effort = "low"
+		case "xhigh":
+			effort = "max"
 		default:
 			effort = "medium"
 		}
@@ -291,6 +295,15 @@ func OpenAIRequestToClaude(req *ChatRequest) map[string]any {
 		if len(claudeTools) > 0 {
 			result["tools"] = claudeTools
 		}
+	}
+
+	if req.User != nil && *req.User != "" {
+		meta, _ := result["metadata"].(map[string]any)
+		if meta == nil {
+			meta = make(map[string]any)
+		}
+		meta["user_id"] = *req.User
+		result["metadata"] = meta
 	}
 
 	return result

@@ -144,7 +144,8 @@ func GeminiResponseToOpenAI(geminiResp map[string]any, model string) map[string]
 		}
 
 		message := map[string]any{
-			"role": "assistant",
+			"role":    "assistant",
+			"refusal": nil,
 		}
 		// OpenAI returns content: null when only tool_calls are present
 		if len(toolCalls) > 0 && content == "" {
@@ -169,21 +170,34 @@ func GeminiResponseToOpenAI(geminiResp map[string]any, model string) map[string]
 	}
 
 	// build usage from usageMetadata
-	usageOut := map[string]any{
-		"prompt_tokens":     0,
-		"completion_tokens": 0,
-		"total_tokens":      0,
-	}
+	prompt := 0
+	completion := 0
+	total := 0
+	cachedTokens := 0
 	if meta, ok := geminiResp["usageMetadata"].(map[string]any); ok {
-		prompt := toInt(meta["promptTokenCount"])
-		completion := toInt(meta["candidatesTokenCount"])
-		total := toInt(meta["totalTokenCount"])
+		prompt = toInt(meta["promptTokenCount"])
+		completion = toInt(meta["candidatesTokenCount"])
+		total = toInt(meta["totalTokenCount"])
+		cachedTokens = toInt(meta["cachedContentTokenCount"])
 		if total == 0 {
 			total = prompt + completion
 		}
-		usageOut["prompt_tokens"] = prompt
-		usageOut["completion_tokens"] = completion
-		usageOut["total_tokens"] = total
+	}
+
+	usageOut := map[string]any{
+		"prompt_tokens":     prompt,
+		"completion_tokens": completion,
+		"total_tokens":      total,
+		"prompt_tokens_details": map[string]any{
+			"cached_tokens": cachedTokens,
+			"audio_tokens":  0,
+		},
+		"completion_tokens_details": map[string]any{
+			"reasoning_tokens":           0,
+			"audio_tokens":               0,
+			"accepted_prediction_tokens": 0,
+			"rejected_prediction_tokens": 0,
+		},
 	}
 
 	return map[string]any{
@@ -193,6 +207,7 @@ func GeminiResponseToOpenAI(geminiResp map[string]any, model string) map[string]
 		"model":              model,
 		"choices":            choices,
 		"usage":              usageOut,
+		"service_tier":       "default",
 		"system_fingerprint": nil,
 	}
 }
@@ -256,6 +271,7 @@ func GeminiStreamChunkToOpenAI(chunk map[string]any, model string, responseID st
 		"created":            ts,
 		"model":              model,
 		"choices":            choices,
+		"service_tier":       "default",
 		"system_fingerprint": nil,
 	}
 }

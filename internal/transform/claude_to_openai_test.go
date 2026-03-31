@@ -353,3 +353,97 @@ func TestClaudeStreamEventToOpenAI_MessageStop(t *testing.T) {
 		t.Errorf("message_stop: expected 0 chunks, got %d", len(chunks))
 	}
 }
+
+func TestClaudeResponseToOpenAI_UsageDetails(t *testing.T) {
+	resp := map[string]any{
+		"content":     []any{map[string]any{"type": "text", "text": "Hi"}},
+		"stop_reason": "end_turn",
+		"usage": map[string]any{
+			"input_tokens":                float64(100),
+			"output_tokens":               float64(50),
+			"cache_creation_input_tokens": float64(10),
+			"cache_read_input_tokens":     float64(20),
+		},
+	}
+	result := ClaudeResponseToOpenAI(resp, "claude-sonnet-4-6")
+
+	usage, _ := result["usage"].(map[string]any)
+	ptd, ok := usage["prompt_tokens_details"].(map[string]any)
+	if !ok {
+		t.Fatal("prompt_tokens_details missing")
+	}
+	if ptd["cached_tokens"] != 20 {
+		t.Errorf("cached_tokens: got %v, want 20", ptd["cached_tokens"])
+	}
+
+	ctd, ok := usage["completion_tokens_details"].(map[string]any)
+	if !ok {
+		t.Fatal("completion_tokens_details missing")
+	}
+	if _, exists := ctd["reasoning_tokens"]; !exists {
+		t.Error("reasoning_tokens missing from completion_tokens_details")
+	}
+}
+
+func TestClaudeResponseToOpenAI_Refusal(t *testing.T) {
+	resp := map[string]any{
+		"content":     []any{map[string]any{"type": "text", "text": "Hello"}},
+		"stop_reason": "end_turn",
+		"usage":       map[string]any{"input_tokens": float64(10), "output_tokens": float64(5)},
+	}
+	result := ClaudeResponseToOpenAI(resp, "claude-sonnet-4-6")
+
+	choices, _ := result["choices"].([]any)
+	choice, _ := choices[0].(map[string]any)
+	msg, _ := choice["message"].(map[string]any)
+	// refusal should be nil when no refusal
+	if _, exists := msg["refusal"]; !exists {
+		t.Error("refusal field missing from message")
+	}
+}
+
+func TestClaudeStreamEventToOpenAI_MessageDeltaUsageDetails(t *testing.T) {
+	state := &ClaudeStreamState{}
+	event := map[string]any{
+		"type":  "message_delta",
+		"delta": map[string]any{"stop_reason": "end_turn"},
+		"usage": map[string]any{"output_tokens": float64(42)},
+	}
+	chunks := ClaudeStreamEventToOpenAI(event, "message_delta", "claude-sonnet-4-6", "chatcmpl-test", state)
+	if len(chunks) == 0 {
+		t.Fatal("expected chunk")
+	}
+	usage, ok := chunks[0]["usage"].(map[string]any)
+	if !ok {
+		t.Fatal("usage missing")
+	}
+	if usage["prompt_tokens"] != 0 {
+		t.Errorf("prompt_tokens: got %v, want 0", usage["prompt_tokens"])
+	}
+	if usage["completion_tokens"] != 42 {
+		t.Errorf("completion_tokens: got %v, want 42", usage["completion_tokens"])
+	}
+	if _, exists := usage["prompt_tokens_details"]; !exists {
+		t.Error("prompt_tokens_details missing from streaming usage")
+	}
+	ctd, ok := usage["completion_tokens_details"].(map[string]any)
+	if !ok {
+		t.Fatal("completion_tokens_details missing")
+	}
+	if _, exists := ctd["reasoning_tokens"]; !exists {
+		t.Error("reasoning_tokens missing")
+	}
+}
+
+func TestClaudeResponseToOpenAI_ServiceTier(t *testing.T) {
+	resp := map[string]any{
+		"content":     []any{map[string]any{"type": "text", "text": "Hi"}},
+		"stop_reason": "end_turn",
+		"usage":       map[string]any{"input_tokens": float64(10), "output_tokens": float64(5)},
+	}
+	result := ClaudeResponseToOpenAI(resp, "claude-sonnet-4-6")
+
+	if result["service_tier"] != "default" {
+		t.Errorf("service_tier: got %v, want 'default'", result["service_tier"])
+	}
+}
