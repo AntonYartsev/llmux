@@ -32,8 +32,8 @@ func TestGeminiBaseModels(t *testing.T) {
 
 func TestClaudeModels(t *testing.T) {
 	expected := []string{
+		"claude-opus-4-7",
 		"claude-sonnet-4-6",
-		"claude-opus-4-6",
 		"claude-haiku-4-5",
 	}
 
@@ -120,7 +120,7 @@ func TestResolveBackendName(t *testing.T) {
 	}{
 		{"my-model", map[string]string{"my-model": "custom"}, "custom"},
 		{"claude-sonnet-4-6", nil, "claude"},
-		{"claude-opus-4-6", map[string]string{}, "claude"},
+		{"claude-opus-4-7", map[string]string{}, "claude"},
 		{"models/gemini-2.5-pro", nil, "gemini"},
 		{"some-other-model", map[string]string{}, "gemini"},
 		{"claude-special", map[string]string{"claude-special": "gemini"}, "gemini"},
