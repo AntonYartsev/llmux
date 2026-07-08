@@ -116,9 +116,9 @@ var GeminiBaseModels = []ModelInfo{
 // static list of supported Claude models
 // source: https://github.com/anthropics/claude-code/blob/main/packages/core/src/llm/model-config.ts
 var ClaudeModels = []ModelInfo{
-	{Name: "claude-opus-4-7", DisplayName: "Claude Opus 4.7", Description: "Claude Opus 4.7"},
-	{Name: "claude-sonnet-4-6", DisplayName: "Claude Sonnet 4.6", Description: "Claude Sonnet 4.6"},
-	{Name: "claude-haiku-4-5", DisplayName: "Claude Haiku 4.5", Description: "Claude Haiku 4.5"},
+	{Name: "claude-opus-4-8", DisplayName: "Claude Opus 4.8", Description: "Claude Opus 4.8"},
+	{Name: "claude-sonnet-5", DisplayName: "Claude Sonnet 5", Description: "Claude Sonnet 5"},
+	{Name: "claude-haiku-4-5-20251001", DisplayName: "Claude Haiku 4.5", Description: "Claude Haiku 4.5"},
 }
 
 // parses a raw fallback chain string of the form
